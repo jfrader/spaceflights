@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spaceflights MVP+</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <div id="hud" aria-live="polite">
+      <div class="title-row">
+        <div class="title">SPACEFLIGHTS</div>
+        <div class="badge">MVP+</div>
+      </div>
+      <div id="phase" class="line"></div>
+      <div id="mode" class="line"></div>
+      <div id="resources" class="line"></div>
+      <div id="status" class="line"></div>
+      <div class="legend">Colors: <span class="safe">SAFE</span> / <span class="objective">OBJECTIVE</span> / <span class="danger">DANGER</span></div>
+      <div class="hint">
+        `1` Ship | `2` Module | `3` EVA | `WASD` thrust | `Space/Ctrl` vertical | `Q/E` yaw | `Shift` boost | `R` reset run | `T` new seed
+      </div>
+    </div>
+
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>
