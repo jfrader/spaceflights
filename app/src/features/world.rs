@@ -26,9 +26,9 @@ const PLANET_BASE_Y: f32 = -22.0;
 const PLANET_FLYBY_START_Z: f32 = -1_150.0;
 const PLANET_FLYBY_DURATION_S: f32 = 12.0;
 const PLANET_DEPART_SPEED: f32 = 120.0;
-const STAR_BACKGROUND_SHELL_RADIUS: f32 = 4_200.0;
-const STAR_BACKGROUND_LAYER_RANGE: f32 = 420.0;
-const STAR_BACKGROUND_DEPTH_JITTER_RANGE: f32 = 2_200.0;
+const STAR_BACKGROUND_RADIUS_MIN: f32 = 1_500.0;
+const STAR_BACKGROUND_RADIUS_RANGE: f32 = 5_000.0;
+const STAR_BACKGROUND_LAYER_RANGE: f32 = 380.0;
 const DEBRIS_TRAVEL_SCALE: f64 = 0.08;
 
 #[derive(Resource, Debug, Clone)]
@@ -407,17 +407,11 @@ fn sync_world_visuals(
 
     for (marker, mut transform) in &mut stars {
         let star = runtime.snapshot.stars[marker.index];
-        let radius =
-            star_background_radius(star, seed_value, marker.index, STAR_BACKGROUND_SHELL_RADIUS);
+        let radius = star_background_radius(star, seed_value, marker.index);
         let world_units_per_pixel =
             world_units_per_pixel_at_depth(radius, camera_fov_rad, viewport_height.max(1.0));
-        transform.translation = world_position_for_star_background(
-            star,
-            seed_value,
-            marker.index,
-            star_center,
-            STAR_BACKGROUND_SHELL_RADIUS,
-        );
+        transform.translation =
+            world_position_for_star_background(star, seed_value, marker.index, star_center);
         transform.scale = Vec3::splat(star_visual_scale_world(star, world_units_per_pixel));
     }
 
@@ -443,10 +437,9 @@ fn world_position_for_star_background(
     seed_value: u64,
     star_index: usize,
     center_world: Vec3,
-    shell_radius: f32,
 ) -> Vec3 {
     let direction = star_direction_from_seed_index(seed_value, star_index);
-    let radius = star_background_radius(star, seed_value, star_index, shell_radius);
+    let radius = star_background_radius(star, seed_value, star_index);
     center_world + direction * radius
 }
 
@@ -662,18 +655,15 @@ fn star_initial_scale(star: StarPoint) -> f32 {
     clippy::cast_possible_truncation,
     reason = "Worldgen parallax range is normalized and intentionally projected to f32 for render math."
 )]
-fn star_background_radius(
-    star: StarPoint,
-    seed_value: u64,
-    star_index: usize,
-    shell_radius: f32,
-) -> f32 {
+fn star_background_radius(star: StarPoint, seed_value: u64, star_index: usize) -> f32 {
     let layer = (1.0 - star.parallax as f32).clamp(0.0, 1.0);
     let depth_hash =
         seed_value.rotate_left(11) ^ (star_index as u64).wrapping_mul(0x94d0_49bb_1331_11eb);
-    let depth_jitter = hash_unit(depth_hash) - 0.5;
-    let jitter = depth_jitter * STAR_BACKGROUND_DEPTH_JITTER_RANGE;
-    shell_radius + layer * STAR_BACKGROUND_LAYER_RANGE + jitter
+    let radial_t = hash_unit(depth_hash);
+    let radius = STAR_BACKGROUND_RADIUS_MIN
+        + radial_t * STAR_BACKGROUND_RADIUS_RANGE
+        + layer * STAR_BACKGROUND_LAYER_RANGE;
+    radius.max(STAR_BACKGROUND_RADIUS_MIN)
 }
 
 fn world_units_per_pixel_at_depth(depth: f32, fov_rad: f32, viewport_height: f32) -> f32 {

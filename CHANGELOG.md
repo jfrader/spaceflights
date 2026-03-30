@@ -15,6 +15,8 @@ All significant changes must be recorded here.
 - `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`
 
 ## Unreleased
+- `fix(world): replace thin star shell with radial volume distribution to remove universe-edge ring artifacts`
+- `docs(architecture): align schedule docs with camera-before-world ordering and active gameplay phase`
 - `fix(world): prevent starfield shell-outside artifact at high mission distance and randomize star depth to remove universe-edge ring`
 - `fix(world): stabilize seeded starfield with pixel-calibrated star scale and FXAA camera pass to reduce shimmer/flicker`
 - `fix(world): anchor star shell to ship-space center with fixed seeded radius to eliminate camera-orbit star flicker`

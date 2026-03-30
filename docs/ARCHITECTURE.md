@@ -25,11 +25,11 @@
   2. `Input`
   3. `Gameplay`
   4. `Music`
-  5. `World`
-  6. `Camera`
+  5. `Camera`
+  6. `World`
   7. `Ui`
   8. `Debug`
-- Gameplay systems are intentionally excluded in foundation phase.
+- Gameplay systems are active in current builds (`main` and `dev-debug`), with deterministic set ordering.
 
 ## Coding Conventions
 - Favor small modules and explicit interfaces over large shared files.
