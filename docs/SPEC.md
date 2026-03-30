@@ -2,6 +2,19 @@
 
 ---
 
+## 0. Implementation Slice (Agent-Oriented)
+
+Current implementation focus is gameplay feel validation, not full feature completion.
+
+For active coding passes, prioritize:
+* Third-person readability and orientation
+* Seeded procedural consistency
+* Distant starfield reference behavior
+* Nearby planet flyby + onward trajectory in dev demo
+* Data-driven architecture (avoid hardcoded controls/tunables; use explicit config contracts)
+
+---
+
 ## 1. Core Concept
 
 A minimalist space exploration game where the player commands a small autonomous vessel, deploys a precision-controlled exploration module, and occasionally exits as an astronaut to perform high-risk tasks in a 3D wireframe universe.

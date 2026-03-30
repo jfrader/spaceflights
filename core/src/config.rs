@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub persistence: PersistenceConfig,
     pub world: WorldConfig,
     pub mouse_look: MouseLookConfig,
+    pub controls: ControlsConfig,
     pub music: MusicConfig,
 }
 
@@ -57,6 +58,54 @@ pub struct MouseLookConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ControlsConfig {
+    pub gameplay: GameplayControlsConfig,
+    pub menu: MenuControlsConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GameplayControlsConfig {
+    pub speed_up: KeyBindingCode,
+    pub speed_down: KeyBindingCode,
+    pub mode_ship: KeyBindingCode,
+    pub mode_module: KeyBindingCode,
+    pub mode_eva: KeyBindingCode,
+    pub yaw_left: KeyBindingCode,
+    pub yaw_right: KeyBindingCode,
+    pub pitch_up: KeyBindingCode,
+    pub pitch_down: KeyBindingCode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MenuControlsConfig {
+    pub toggle: KeyBindingCode,
+    pub confirm: KeyBindingCode,
+    pub new_world: KeyBindingCode,
+    pub restart_world: KeyBindingCode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyBindingCode {
+    BracketLeft,
+    BracketRight,
+    Digit1,
+    Digit2,
+    Digit3,
+    KeyW,
+    KeyA,
+    KeyS,
+    KeyD,
+    ArrowLeft,
+    ArrowRight,
+    ArrowUp,
+    ArrowDown,
+    Escape,
+    Enter,
+    KeyN,
+    KeyR,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MusicConfig {
     pub enabled: bool,
     pub backend: MusicBackend,
@@ -100,6 +149,25 @@ impl Default for AppConfig {
                 sensitivity: 0.0022,
                 pitch_limit_deg: 80.0,
             },
+            controls: ControlsConfig {
+                gameplay: GameplayControlsConfig {
+                    speed_up: KeyBindingCode::KeyW,
+                    speed_down: KeyBindingCode::KeyS,
+                    mode_ship: KeyBindingCode::Digit1,
+                    mode_module: KeyBindingCode::Digit2,
+                    mode_eva: KeyBindingCode::Digit3,
+                    yaw_left: KeyBindingCode::KeyA,
+                    yaw_right: KeyBindingCode::KeyD,
+                    pitch_up: KeyBindingCode::ArrowUp,
+                    pitch_down: KeyBindingCode::ArrowDown,
+                },
+                menu: MenuControlsConfig {
+                    toggle: KeyBindingCode::Escape,
+                    confirm: KeyBindingCode::Enter,
+                    new_world: KeyBindingCode::KeyN,
+                    restart_world: KeyBindingCode::KeyR,
+                },
+            },
             music: MusicConfig {
                 enabled: true,
                 backend: MusicBackend::Silent,
@@ -117,96 +185,134 @@ impl AppConfig {
         I: IntoIterator<Item = (String, String)>,
     {
         for (key, value) in pairs {
-            match key.as_str() {
-                "SPACEFLIGHTS_WINDOW_TITLE" => {
-                    self.window.title = value;
-                }
-                "SPACEFLIGHTS_WINDOW_WIDTH" => {
-                    if let Ok(width) = value.parse::<u32>() {
-                        self.window.width = width.max(1);
-                    }
-                }
-                "SPACEFLIGHTS_WINDOW_HEIGHT" => {
-                    if let Ok(height) = value.parse::<u32>() {
-                        self.window.height = height.max(1);
-                    }
-                }
-                "SPACEFLIGHTS_DEBUG_OVERLAY" => {
-                    if let Some(parsed) = parse_bool(&value) {
-                        self.debug.show_overlay = parsed;
-                    }
-                }
-                "SPACEFLIGHTS_DEBUG_TRACING" => {
-                    if let Some(parsed) = parse_bool(&value) {
-                        self.debug.enable_tracing = parsed;
-                    }
-                }
-                "SPACEFLIGHTS_INITIAL_SEED" => {
-                    if let Ok(seed) = value.parse::<u64>() {
-                        self.seed.initial_seed = seed;
-                    }
-                }
-                "SPACEFLIGHTS_PERSISTENCE_BACKEND" => {
-                    if let Some(backend) = parse_persistence_backend(&value) {
-                        self.persistence.backend = backend;
-                    }
-                }
-                "SPACEFLIGHTS_SQLITE_PATH" => {
-                    self.persistence.sqlite_path = value;
-                }
-                "SPACEFLIGHTS_SPACETIMEDB_URI" => {
-                    self.persistence.spacetimedb_uri = value;
-                }
-                "SPACEFLIGHTS_WORLD_PROFILE" => {
-                    if let Some(profile) = parse_world_profile_preset(&value) {
-                        self.world.profile = profile;
-                    }
-                }
-                "SPACEFLIGHTS_WORLD_STAR_DENSITY" => {
-                    if let Ok(percent) = value.parse::<u16>() {
-                        self.world.star_density_percent = percent.max(10);
-                    }
-                }
-                "SPACEFLIGHTS_WORLD_DEBRIS_DENSITY" => {
-                    if let Ok(percent) = value.parse::<u16>() {
-                        self.world.debris_density_percent = percent.max(10);
-                    }
-                }
-                "SPACEFLIGHTS_MOUSE_SENSITIVITY" => {
-                    if let Ok(sensitivity) = value.parse::<f32>() {
-                        self.mouse_look.sensitivity = sensitivity.max(0.0001);
-                    }
-                }
-                "SPACEFLIGHTS_MOUSE_PITCH_LIMIT_DEG" => {
-                    if let Ok(limit) = value.parse::<f32>() {
-                        self.mouse_look.pitch_limit_deg = limit.clamp(10.0, 89.0);
-                    }
-                }
-                "SPACEFLIGHTS_MUSIC_ENABLED" => {
-                    if let Some(enabled) = parse_bool(&value) {
-                        self.music.enabled = enabled;
-                    }
-                }
-                "SPACEFLIGHTS_MUSIC_BACKEND" => {
-                    if let Some(backend) = parse_music_backend(&value) {
-                        self.music.backend = backend;
-                    }
-                }
-                "SPACEFLIGHTS_MUSIC_BPM" => {
-                    if let Ok(bpm) = value.parse::<u16>() {
-                        self.music.bpm = bpm.clamp(40, 220);
-                    }
-                }
-                "SPACEFLIGHTS_MUSIC_SCALE" => {
-                    if let Some(scale_mode) = parse_scale_mode(&value) {
-                        self.music.scale_mode = scale_mode;
-                    }
-                }
-                _ => {}
-            }
+            if self.apply_base_env_override(&key, &value)
+                || self.apply_controls_env_override(&key, &value)
+                || self.apply_music_env_override(&key, &value)
+            {}
         }
 
         self
+    }
+
+    fn apply_base_env_override(&mut self, key: &str, value: &str) -> bool {
+        match key {
+            "SPACEFLIGHTS_WINDOW_TITLE" => value.clone_into(&mut self.window.title),
+            "SPACEFLIGHTS_WINDOW_WIDTH" => {
+                if let Ok(width) = value.parse::<u32>() {
+                    self.window.width = width.max(1);
+                }
+            }
+            "SPACEFLIGHTS_WINDOW_HEIGHT" => {
+                if let Ok(height) = value.parse::<u32>() {
+                    self.window.height = height.max(1);
+                }
+            }
+            "SPACEFLIGHTS_DEBUG_OVERLAY" => {
+                if let Some(parsed) = parse_bool(value) {
+                    self.debug.show_overlay = parsed;
+                }
+            }
+            "SPACEFLIGHTS_DEBUG_TRACING" => {
+                if let Some(parsed) = parse_bool(value) {
+                    self.debug.enable_tracing = parsed;
+                }
+            }
+            "SPACEFLIGHTS_INITIAL_SEED" => {
+                if let Ok(seed) = value.parse::<u64>() {
+                    self.seed.initial_seed = seed;
+                }
+            }
+            "SPACEFLIGHTS_PERSISTENCE_BACKEND" => {
+                if let Some(backend) = parse_persistence_backend(value) {
+                    self.persistence.backend = backend;
+                }
+            }
+            "SPACEFLIGHTS_SQLITE_PATH" => value.clone_into(&mut self.persistence.sqlite_path),
+            "SPACEFLIGHTS_SPACETIMEDB_URI" => {
+                value.clone_into(&mut self.persistence.spacetimedb_uri);
+            }
+            "SPACEFLIGHTS_WORLD_PROFILE" => {
+                if let Some(profile) = parse_world_profile_preset(value) {
+                    self.world.profile = profile;
+                }
+            }
+            "SPACEFLIGHTS_WORLD_STAR_DENSITY" => {
+                if let Ok(percent) = value.parse::<u16>() {
+                    self.world.star_density_percent = percent.max(10);
+                }
+            }
+            "SPACEFLIGHTS_WORLD_DEBRIS_DENSITY" => {
+                if let Ok(percent) = value.parse::<u16>() {
+                    self.world.debris_density_percent = percent.max(10);
+                }
+            }
+            "SPACEFLIGHTS_MOUSE_SENSITIVITY" => {
+                if let Ok(sensitivity) = value.parse::<f32>() {
+                    self.mouse_look.sensitivity = sensitivity.max(0.0001);
+                }
+            }
+            "SPACEFLIGHTS_MOUSE_PITCH_LIMIT_DEG" => {
+                if let Ok(limit) = value.parse::<f32>() {
+                    self.mouse_look.pitch_limit_deg = limit.clamp(10.0, 89.0);
+                }
+            }
+            _ => return false,
+        }
+
+        true
+    }
+
+    fn apply_controls_env_override(&mut self, key: &str, value: &str) -> bool {
+        let Some(binding) = parse_key_binding_code(value) else {
+            return false;
+        };
+
+        match key {
+            "SPACEFLIGHTS_KEY_SPEED_UP" => self.controls.gameplay.speed_up = binding,
+            "SPACEFLIGHTS_KEY_SPEED_DOWN" => self.controls.gameplay.speed_down = binding,
+            "SPACEFLIGHTS_KEY_MODE_SHIP" => self.controls.gameplay.mode_ship = binding,
+            "SPACEFLIGHTS_KEY_MODE_MODULE" => self.controls.gameplay.mode_module = binding,
+            "SPACEFLIGHTS_KEY_MODE_EVA" => self.controls.gameplay.mode_eva = binding,
+            "SPACEFLIGHTS_KEY_YAW_LEFT" => self.controls.gameplay.yaw_left = binding,
+            "SPACEFLIGHTS_KEY_YAW_RIGHT" => self.controls.gameplay.yaw_right = binding,
+            "SPACEFLIGHTS_KEY_PITCH_UP" => self.controls.gameplay.pitch_up = binding,
+            "SPACEFLIGHTS_KEY_PITCH_DOWN" => self.controls.gameplay.pitch_down = binding,
+            "SPACEFLIGHTS_KEY_MENU_TOGGLE" => self.controls.menu.toggle = binding,
+            "SPACEFLIGHTS_KEY_MENU_CONFIRM" => self.controls.menu.confirm = binding,
+            "SPACEFLIGHTS_KEY_MENU_NEW_WORLD" => self.controls.menu.new_world = binding,
+            "SPACEFLIGHTS_KEY_MENU_RESTART_WORLD" => self.controls.menu.restart_world = binding,
+            _ => return false,
+        }
+
+        true
+    }
+
+    fn apply_music_env_override(&mut self, key: &str, value: &str) -> bool {
+        match key {
+            "SPACEFLIGHTS_MUSIC_ENABLED" => {
+                if let Some(enabled) = parse_bool(value) {
+                    self.music.enabled = enabled;
+                }
+            }
+            "SPACEFLIGHTS_MUSIC_BACKEND" => {
+                if let Some(backend) = parse_music_backend(value) {
+                    self.music.backend = backend;
+                }
+            }
+            "SPACEFLIGHTS_MUSIC_BPM" => {
+                if let Ok(bpm) = value.parse::<u16>() {
+                    self.music.bpm = bpm.clamp(40, 220);
+                }
+            }
+            "SPACEFLIGHTS_MUSIC_SCALE" => {
+                if let Some(scale_mode) = parse_scale_mode(value) {
+                    self.music.scale_mode = scale_mode;
+                }
+            }
+            _ => return false,
+        }
+
+        true
     }
 }
 
@@ -256,11 +362,36 @@ pub fn parse_scale_mode(input: &str) -> Option<ScaleMode> {
     }
 }
 
+#[must_use]
+pub fn parse_key_binding_code(input: &str) -> Option<KeyBindingCode> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "[" | "bracketleft" | "left_bracket" => Some(KeyBindingCode::BracketLeft),
+        "]" | "bracketright" | "right_bracket" => Some(KeyBindingCode::BracketRight),
+        "1" | "digit1" => Some(KeyBindingCode::Digit1),
+        "2" | "digit2" => Some(KeyBindingCode::Digit2),
+        "3" | "digit3" => Some(KeyBindingCode::Digit3),
+        "w" | "keyw" => Some(KeyBindingCode::KeyW),
+        "a" | "keya" => Some(KeyBindingCode::KeyA),
+        "s" | "keys" => Some(KeyBindingCode::KeyS),
+        "d" | "keyd" => Some(KeyBindingCode::KeyD),
+        "arrowleft" | "left" => Some(KeyBindingCode::ArrowLeft),
+        "arrowright" | "right" => Some(KeyBindingCode::ArrowRight),
+        "arrowup" | "up" => Some(KeyBindingCode::ArrowUp),
+        "arrowdown" | "down" => Some(KeyBindingCode::ArrowDown),
+        "escape" | "esc" => Some(KeyBindingCode::Escape),
+        "enter" | "return" => Some(KeyBindingCode::Enter),
+        "n" | "keyn" => Some(KeyBindingCode::KeyN),
+        "r" | "keyr" => Some(KeyBindingCode::KeyR),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_bool, parse_music_backend, parse_persistence_backend, parse_scale_mode,
-        parse_world_profile_preset, AppConfig, MusicBackend, PersistenceBackend,
+        parse_bool, parse_key_binding_code, parse_music_backend, parse_persistence_backend,
+        parse_scale_mode, parse_world_profile_preset, AppConfig, KeyBindingCode, MusicBackend,
+        PersistenceBackend,
     };
     use crate::music::ScaleMode;
     use crate::worldgen::WorldProfilePreset;
@@ -287,6 +418,11 @@ mod tests {
         assert_eq!(cfg.world.debris_density_percent, 100);
         assert_close(cfg.mouse_look.sensitivity, 0.0022);
         assert_close(cfg.mouse_look.pitch_limit_deg, 80.0);
+        assert_eq!(cfg.controls.gameplay.speed_up, KeyBindingCode::KeyW);
+        assert_eq!(cfg.controls.gameplay.speed_down, KeyBindingCode::KeyS);
+        assert_eq!(cfg.controls.gameplay.yaw_left, KeyBindingCode::KeyA);
+        assert_eq!(cfg.controls.gameplay.yaw_right, KeyBindingCode::KeyD);
+        assert_eq!(cfg.controls.menu.toggle, KeyBindingCode::Escape);
         assert!(cfg.music.enabled);
         assert_eq!(cfg.music.backend, MusicBackend::Silent);
         assert_eq!(cfg.music.bpm, 104);
@@ -352,6 +488,15 @@ mod tests {
                 String::from("SPACEFLIGHTS_MOUSE_PITCH_LIMIT_DEG"),
                 String::from("75"),
             ),
+            (String::from("SPACEFLIGHTS_KEY_SPEED_UP"), String::from("1")),
+            (
+                String::from("SPACEFLIGHTS_KEY_SPEED_DOWN"),
+                String::from("2"),
+            ),
+            (
+                String::from("SPACEFLIGHTS_KEY_MENU_TOGGLE"),
+                String::from("enter"),
+            ),
             (
                 String::from("SPACEFLIGHTS_MUSIC_ENABLED"),
                 String::from("true"),
@@ -381,6 +526,9 @@ mod tests {
         assert_eq!(cfg.world.debris_density_percent, 65);
         assert_close(cfg.mouse_look.sensitivity, 0.0031);
         assert_close(cfg.mouse_look.pitch_limit_deg, 75.0);
+        assert_eq!(cfg.controls.gameplay.speed_up, KeyBindingCode::Digit1);
+        assert_eq!(cfg.controls.gameplay.speed_down, KeyBindingCode::Digit2);
+        assert_eq!(cfg.controls.menu.toggle, KeyBindingCode::Enter);
         assert_eq!(cfg.music.backend, MusicBackend::DebugLog);
         assert_eq!(cfg.music.bpm, 128);
         assert_eq!(cfg.music.scale_mode, ScaleMode::Major);
@@ -418,6 +566,10 @@ mod tests {
                 String::from("nope"),
             ),
             (
+                String::from("SPACEFLIGHTS_KEY_MENU_TOGGLE"),
+                String::from("spacebar"),
+            ),
+            (
                 String::from("SPACEFLIGHTS_MUSIC_BACKEND"),
                 String::from("loud"),
             ),
@@ -430,6 +582,7 @@ mod tests {
         assert_eq!(cfg.persistence.backend, PersistenceBackend::Sqlite);
         assert_eq!(cfg.world.profile, WorldProfilePreset::Main);
         assert_close(cfg.mouse_look.sensitivity, 0.0022);
+        assert_eq!(cfg.controls.menu.toggle, KeyBindingCode::Escape);
         assert_eq!(cfg.music.backend, MusicBackend::Silent);
     }
 
@@ -481,5 +634,22 @@ mod tests {
         assert_eq!(parse_scale_mode("minor"), Some(ScaleMode::Minor));
         assert_eq!(parse_scale_mode("major"), Some(ScaleMode::Major));
         assert_eq!(parse_scale_mode("dorian"), None);
+    }
+
+    #[test]
+    fn parse_key_binding_code_supports_known_values() {
+        assert_eq!(
+            parse_key_binding_code("["),
+            Some(KeyBindingCode::BracketLeft)
+        );
+        assert_eq!(
+            parse_key_binding_code("right"),
+            Some(KeyBindingCode::ArrowRight)
+        );
+        assert_eq!(parse_key_binding_code("w"), Some(KeyBindingCode::KeyW));
+        assert_eq!(parse_key_binding_code("keyd"), Some(KeyBindingCode::KeyD));
+        assert_eq!(parse_key_binding_code("esc"), Some(KeyBindingCode::Escape));
+        assert_eq!(parse_key_binding_code("keyn"), Some(KeyBindingCode::KeyN));
+        assert_eq!(parse_key_binding_code("space"), None);
     }
 }

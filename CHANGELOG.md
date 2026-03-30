@@ -15,6 +15,17 @@ All significant changes must be recorded here.
 - `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`
 
 ## Unreleased
+- `fix(input): switch default gameplay bindings to W/S acceleration and A/D yaw for immediate playability`
+- `fix(world): remove starfield shell patterning by deriving directions from worldgen star positions with deterministic jitter`
+- `feat(ui): split startup main menu from in-game HUD and add click-or-confirm start flow`
+- `fix(input): prevent hidden menu lock by making menu gating explicit and gameplay entry immediate`
+- `feat(config): add typed control binding config with env-overridable action mappings`
+- `refactor(input): route gameplay and menu input through configurable binding resource instead of hardcoded keys`
+- `docs(architecture): codify data-driven config rule for volatile behavior across features`
+- `feat(ui): add in-game world menu (start/toggle/new-seed/restart-seed) with event-driven world rebuild flow`
+- `feat(gameplay): add basic ship navigation commands (yaw/pitch steering) with deterministic position integration`
+- `test(app): add integration coverage for world reset event and seeded runtime rebuild`
+- `docs(agent): clarify doc priority and add current-slice checklists in README/ARCHITECTURE/SPEC for consistent agent execution`
 - `ci(build): install ALSA + udev dev packages on Linux runners so rodio/alsa-sys and libudev-sys builds pass in clippy/tests/releases`
 - `ci(release): add cross-platform release workflow (linux/macos/windows) with build artifacts and tag-based GitHub Release assets`
 - `fix(world): replace thin star shell with radial volume distribution to remove universe-edge ring artifacts`

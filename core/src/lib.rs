@@ -7,10 +7,10 @@ pub mod seed;
 pub mod worldgen;
 
 pub use config::{
-    AppConfig, MouseLookConfig, MusicBackend, MusicConfig, PersistenceBackend, PersistenceConfig,
-    WorldConfig,
+    AppConfig, ControlsConfig, GameplayControlsConfig, KeyBindingCode, MenuControlsConfig,
+    MouseLookConfig, MusicBackend, MusicConfig, PersistenceBackend, PersistenceConfig, WorldConfig,
 };
-pub use gameplay::{step, ControlMode, GameCommand, GameplayState, GameplayTuning};
+pub use gameplay::{step, ControlMode, GameCommand, GameplayState, GameplayTuning, NavVector3Km};
 pub use music::{generate_phrase, MusicProfile, NoteEvent, ScaleMode, Waveform};
 pub use persistence::{GameplayPersistenceStrategy, PersistenceError, UserGameplaySnapshot};
 pub use seed::Seed;

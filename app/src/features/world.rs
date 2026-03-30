@@ -2,7 +2,8 @@ use bevy::math::primitives::{Annulus, Circle, Cuboid, Sphere};
 use bevy::prelude::*;
 use bevy::render::view::NoFrustumCulling;
 use spaceflights_core::{
-    generate_world, profile_from_preset, HorizonDebris, StarPoint, WorldProfile, WorldSnapshot,
+    generate_world, profile_from_preset, HorizonDebris, Seed, StarPoint, WorldProfile,
+    WorldSnapshot,
 };
 
 use crate::features::gameplay::GameplayRuntime;
@@ -20,7 +21,8 @@ const RENDER_DEBRIS_STRIDE: usize = 7;
 const WORLD_RENDER_SCALE: f32 = 0.03;
 const PLANET_RADIUS: f32 = 72.0;
 const PLANET_RING_HALF_WIDTH: f32 = 0.7;
-const PLANET_OCCLUDER_RADIUS_SCALE: f32 = 0.94;
+const PLANET_OCCLUDER_INSET: f32 = 0.22;
+const PLANET_BORDER_CAMERA_OFFSET: f32 = 0.08;
 const PLANET_BASE_X: f32 = 18.0;
 const PLANET_BASE_Y: f32 = -22.0;
 const PLANET_FLYBY_START_Z: f32 = -1_150.0;
@@ -44,6 +46,14 @@ pub struct WorldRenderStats {
     pub star_count: u32,
     pub debris_count: u32,
 }
+
+#[derive(Event, Debug, Clone, Copy)]
+pub struct RequestWorldReset {
+    pub seed: Seed,
+}
+
+#[derive(Component)]
+struct WorldVisual;
 
 #[derive(Component)]
 struct StarVisual {
@@ -82,7 +92,13 @@ struct PlanetBorder;
 impl Plugin for WorldFeaturePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, initialize_world)
-            .add_systems(Update, sync_world_visuals.in_set(GameSet::World));
+            .add_systems(Update, apply_world_reset_requests.in_set(GameSet::World))
+            .add_systems(
+                Update,
+                sync_world_visuals
+                    .in_set(GameSet::World)
+                    .after(apply_world_reset_requests),
+            );
     }
 }
 
@@ -100,22 +116,13 @@ fn initialize_world(
             seed_resource.0.value()
         });
 
-    let profile = profile_from_preset(
-        config.0.world.profile,
-        config.0.world.star_density_percent,
-        config.0.world.debris_density_percent,
-    );
+    let profile = world_profile_from_config(&config);
 
-    let snapshot = generate_world(spaceflights_core::Seed::new(seed), profile);
+    let snapshot = generate_world(Seed::new(seed), profile);
     let dev_flyby_demo_enabled = build_flavor
         .as_ref()
         .is_some_and(|flavor| flavor.0 == BuildFlavor::DevDebug);
-    let stats = WorldRenderStats {
-        seed_label: format!("{seed:016x}"),
-        profile_label: String::from(profile.label),
-        star_count: u32::try_from(snapshot.stars.len()).unwrap_or(u32::MAX),
-        debris_count: u32::try_from(snapshot.horizon_debris.len()).unwrap_or(u32::MAX),
-    };
+    let stats = world_render_stats(seed, profile, &snapshot);
 
     if let (Some(mut meshes), Some(mut materials)) = (meshes.take(), materials.take()) {
         spawn_visuals_with_meshes(
@@ -136,6 +143,93 @@ fn initialize_world(
     commands.insert_resource(stats);
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "World reset rebuilds deterministic runtime + visuals."
+)]
+fn apply_world_reset_requests(
+    mut commands: Commands,
+    mut reset_requests: EventReader<RequestWorldReset>,
+    current_seed: Option<ResMut<CurrentSeed>>,
+    config: Res<AppConfigResource>,
+    build_flavor: Option<Res<BuildFlavorResource>>,
+    runtime: Option<ResMut<WorldRuntime>>,
+    stats: Option<ResMut<WorldRenderStats>>,
+    mut meshes: Option<ResMut<Assets<Mesh>>>,
+    mut materials: Option<ResMut<Assets<StandardMaterial>>>,
+    existing_visuals: Query<Entity, With<WorldVisual>>,
+) {
+    let Some(request) = reset_requests.read().last().copied() else {
+        return;
+    };
+
+    for entity in &existing_visuals {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    let profile = world_profile_from_config(&config);
+    let snapshot = generate_world(request.seed, profile);
+    let dev_flyby_demo_enabled = build_flavor
+        .as_ref()
+        .is_some_and(|flavor| flavor.0 == BuildFlavor::DevDebug);
+
+    if let (Some(mut meshes), Some(mut materials)) = (meshes.take(), materials.take()) {
+        spawn_visuals_with_meshes(
+            &mut commands,
+            &snapshot,
+            &mut meshes,
+            &mut materials,
+            dev_flyby_demo_enabled,
+        );
+    } else {
+        spawn_headless_placeholders(&mut commands, &snapshot, dev_flyby_demo_enabled);
+    }
+
+    if let Some(mut seed_resource) = current_seed {
+        seed_resource.0 = request.seed;
+    } else {
+        commands.insert_resource(CurrentSeed(request.seed));
+    }
+
+    let next_runtime = WorldRuntime {
+        snapshot: snapshot.clone(),
+        dev_flyby_demo_enabled,
+    };
+    if let Some(mut runtime) = runtime {
+        *runtime = next_runtime;
+    } else {
+        commands.insert_resource(next_runtime);
+    }
+
+    let next_stats = world_render_stats(request.seed.value(), profile, &snapshot);
+    if let Some(mut stats) = stats {
+        *stats = next_stats;
+    } else {
+        commands.insert_resource(next_stats);
+    }
+}
+
+fn world_profile_from_config(config: &AppConfigResource) -> WorldProfile {
+    profile_from_preset(
+        config.0.world.profile,
+        config.0.world.star_density_percent,
+        config.0.world.debris_density_percent,
+    )
+}
+
+fn world_render_stats(
+    seed_value: u64,
+    profile: WorldProfile,
+    snapshot: &WorldSnapshot,
+) -> WorldRenderStats {
+    WorldRenderStats {
+        seed_label: format!("{seed_value:016x}"),
+        profile_label: String::from(profile.label),
+        star_count: u32::try_from(snapshot.stars.len()).unwrap_or(u32::MAX),
+        debris_count: u32::try_from(snapshot.horizon_debris.len()).unwrap_or(u32::MAX),
+    }
+}
+
 fn spawn_visuals_with_meshes(
     commands: &mut Commands,
     snapshot: &WorldSnapshot,
@@ -146,7 +240,7 @@ fn spawn_visuals_with_meshes(
     let point_mesh = meshes.add(Mesh::from(Sphere::new(0.5)));
     let rod_mesh = meshes.add(Mesh::from(Cuboid::from_size(Vec3::ONE)));
     let planet_fill_mesh = meshes.add(Mesh::from(Circle::new(
-        PLANET_RADIUS * PLANET_OCCLUDER_RADIUS_SCALE,
+        (PLANET_RADIUS - PLANET_RING_HALF_WIDTH - PLANET_OCCLUDER_INSET).max(1.0),
     )));
     let planet_ring_mesh = meshes.add(Mesh::from(Annulus::new(
         (PLANET_RADIUS - PLANET_RING_HALF_WIDTH).max(1.0),
@@ -203,6 +297,7 @@ fn spawn_visuals_with_meshes(
                 },
                 ..Default::default()
             },
+            WorldVisual,
             NoFrustumCulling,
             StarVisual { index },
             Name::new(format!("Star-{index}")),
@@ -225,6 +320,7 @@ fn spawn_visuals_with_meshes(
                 },
                 ..Default::default()
             },
+            WorldVisual,
             DebrisVisual { index },
             Name::new(format!("Debris-{index}")),
         ));
@@ -244,6 +340,7 @@ fn spawn_headless_placeholders(
     for (index, star) in snapshot.stars.iter().enumerate() {
         commands.spawn((
             SpatialBundle::from_transform(Transform::from_translation(to_vec3(star.position))),
+            WorldVisual,
             StarVisual { index },
             Name::new(format!("HeadlessStar-{index}")),
         ));
@@ -260,6 +357,7 @@ fn spawn_headless_placeholders(
                 scale: Vec3::splat(debris.scale),
                 ..Default::default()
             }),
+            WorldVisual,
             DebrisVisual { index },
             Name::new(format!("HeadlessDebris-{index}")),
         ));
@@ -270,6 +368,7 @@ fn spawn_headless_placeholders(
             let flyby = build_flyby_visual(snapshot.seed.value(), index);
             commands.spawn((
                 SpatialBundle::from_transform(Transform::from_translation(flyby.base_position)),
+                WorldVisual,
                 flyby,
                 Name::new(format!("HeadlessFlyby-{index}")),
             ));
@@ -422,7 +521,7 @@ fn sync_world_visuals(
     }
 
     for mut transform in &mut planet_borders {
-        transform.translation = planet_center + to_camera * 0.6;
+        transform.translation = planet_center + to_camera * PLANET_BORDER_CAMERA_OFFSET;
         transform.rotation = planet_rotation;
         transform.scale = Vec3::ONE;
     }
@@ -438,7 +537,7 @@ fn world_position_for_star_background(
     star_index: usize,
     center_world: Vec3,
 ) -> Vec3 {
-    let direction = star_direction_from_seed_index(seed_value, star_index);
+    let direction = star_direction_from_star(star, seed_value, star_index);
     let radius = star_background_radius(star, seed_value, star_index);
     center_world + direction * radius
 }
@@ -492,6 +591,7 @@ fn spawn_flyby_visuals(
                 },
                 ..Default::default()
             },
+            WorldVisual,
             flyby,
             Name::new(format!("Flyby-{index}")),
         ));
@@ -608,6 +708,7 @@ fn spawn_planet_border(
             },
             ..Default::default()
         },
+        WorldVisual,
         NoFrustumCulling,
         PlanetOccluder,
         Name::new("PlanetOccluder"),
@@ -620,6 +721,7 @@ fn spawn_planet_border(
             transform: Transform::from_translation(center),
             ..Default::default()
         },
+        WorldVisual,
         NoFrustumCulling,
         PlanetBorder,
         Name::new("PlanetBorder"),
@@ -631,12 +733,14 @@ fn spawn_headless_planet_border(commands: &mut Commands) {
 
     commands.spawn((
         SpatialBundle::from_transform(Transform::from_translation(center)),
+        WorldVisual,
         PlanetOccluder,
         Name::new("HeadlessPlanetOccluder"),
     ));
 
     commands.spawn((
         SpatialBundle::from_transform(Transform::from_translation(center)),
+        WorldVisual,
         PlanetBorder,
         Name::new("HeadlessPlanetBorder"),
     ));
@@ -655,14 +759,12 @@ fn star_initial_scale(star: StarPoint) -> f32 {
     clippy::cast_possible_truncation,
     reason = "Worldgen parallax range is normalized and intentionally projected to f32 for render math."
 )]
-fn star_background_radius(star: StarPoint, seed_value: u64, star_index: usize) -> f32 {
-    let layer = (1.0 - star.parallax as f32).clamp(0.0, 1.0);
+fn star_background_radius(_star: StarPoint, seed_value: u64, star_index: usize) -> f32 {
     let depth_hash =
         seed_value.rotate_left(11) ^ (star_index as u64).wrapping_mul(0x94d0_49bb_1331_11eb);
     let radial_t = hash_unit(depth_hash);
     let radius = STAR_BACKGROUND_RADIUS_MIN
-        + radial_t * STAR_BACKGROUND_RADIUS_RANGE
-        + layer * STAR_BACKGROUND_LAYER_RANGE;
+        + radial_t * (STAR_BACKGROUND_RADIUS_RANGE + STAR_BACKGROUND_LAYER_RANGE);
     radius.max(STAR_BACKGROUND_RADIUS_MIN)
 }
 
@@ -708,16 +810,27 @@ fn cubic_bezier(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t: f32) -> Vec3 {
     clippy::cast_precision_loss,
     reason = "Seeded sky direction generation intentionally maps hashes into f32 unit vectors."
 )]
-fn star_direction_from_seed_index(seed_value: u64, star_index: usize) -> Vec3 {
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Render-only star direction vectors project worldgen f64 positions into f32 space."
+)]
+fn star_direction_from_star(star: StarPoint, seed_value: u64, star_index: usize) -> Vec3 {
+    let base = Vec3::new(
+        star.position.x as f32,
+        star.position.y as f32,
+        star.position.z as f32,
+    )
+    .normalize_or_zero();
     let idx = star_index as u64;
-    let hash_a = seed_value ^ idx.wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    let hash_b = seed_value.rotate_left(19) ^ idx.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    let u = hash_unit(hash_a);
-    let v = hash_unit(hash_b);
-    let theta = u * std::f32::consts::TAU;
-    let z = v * 2.0 - 1.0;
-    let r = (1.0 - z * z).max(0.0).sqrt();
-    Vec3::new(r * theta.cos(), r * theta.sin(), z).normalize_or_zero()
+    let jitter_hash = seed_value.rotate_left(19) ^ idx.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    let jitter_theta = hash_unit(jitter_hash) * std::f32::consts::TAU;
+    let jitter_phi = hash_unit(jitter_hash.rotate_left(23)) * std::f32::consts::PI;
+    let jitter = Vec3::new(
+        jitter_theta.cos() * jitter_phi.sin(),
+        jitter_theta.sin() * jitter_phi.sin(),
+        jitter_phi.cos(),
+    );
+    (base * 0.92 + jitter * 0.08).normalize_or_zero()
 }
 
 #[allow(

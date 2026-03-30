@@ -4,6 +4,7 @@ use bevy::ecs::event::ManualEventReader;
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 
+use super::gameplay::GameplayRuntime;
 use crate::plugins::schedule::GameSet;
 use crate::AppConfigResource;
 
@@ -21,6 +22,9 @@ pub struct FoundationCamera;
 
 #[derive(Component)]
 pub struct MouseLookCamera;
+
+const KM_TO_WORLD: f32 = 0.03;
+const CAMERA_FOLLOW_OFFSET: Vec3 = Vec3::new(0.0, 2.2, 8.5);
 
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct MouseLookState {
@@ -47,7 +51,13 @@ impl Plugin for CameraFeaturePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(MouseLookPlugin)
             .add_systems(Startup, spawn_foundation_camera)
-            .add_systems(Update, maintain_camera_scaffold.in_set(GameSet::Camera));
+            .add_systems(Update, maintain_camera_scaffold.in_set(GameSet::Camera))
+            .add_systems(
+                Update,
+                follow_gameplay_camera
+                    .in_set(GameSet::Camera)
+                    .in_set(CameraFlowSet::Follow),
+            );
     }
 }
 
@@ -101,6 +111,29 @@ fn spawn_foundation_camera(mut commands: Commands) {
 
 fn maintain_camera_scaffold(query: Query<&Transform, With<FoundationCamera>>) {
     std::hint::black_box(query.get_single().ok());
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Bevy Transform coordinates are f32."
+)]
+fn follow_gameplay_camera(
+    gameplay: Option<Res<GameplayRuntime>>,
+    mut cameras: Query<&mut Transform, (With<FoundationCamera>, With<MouseLookCamera>)>,
+) {
+    let Some(gameplay) = gameplay else {
+        return;
+    };
+    let Ok(mut camera_transform) = cameras.get_single_mut() else {
+        return;
+    };
+
+    let ship_world = Vec3::new(
+        (gameplay.state.ship_position_km.x as f32) * KM_TO_WORLD,
+        (gameplay.state.ship_position_km.y as f32) * KM_TO_WORLD,
+        (gameplay.state.ship_position_km.z as f32) * KM_TO_WORLD,
+    );
+    camera_transform.translation = ship_world + camera_transform.rotation * CAMERA_FOLLOW_OFFSET;
 }
 
 fn apply_mouse_look(

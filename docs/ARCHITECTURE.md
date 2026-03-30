@@ -19,6 +19,12 @@
 - `app::features`: feature plugins with isolated systems.
   - includes `music` feature with adapter-based synth backend abstraction.
 
+## Current Feature Boundaries
+- `core::worldgen` owns deterministic world snapshots and seed behavior.
+- `app::features::world` owns visual adaptation of snapshots (star/debris/planet/flyby rendering).
+- `app::features::camera` owns mouse-look and camera transform flow only.
+- `app::features::gameplay` owns travel state progression consumed by world/camera features.
+
 ## Scheduling Convention
 - Update order is explicit and deterministic using sets:
   1. `Persistence`
@@ -36,6 +42,8 @@
 - Avoid hidden global state; state should be in typed resources/components.
 - Keep systems single-purpose and side-effect bounded.
 - Add tests at boundaries (`core` deterministic logic, `app` boot/composition behavior).
+- Prefer data-driven configuration over hardcoded behavior (keys, tunables, feature toggles).
+- Place reusable contracts in `core`; keep app/framework adapters in `app`.
 
 ## Dev Debug Build
 - `spaceflights-dev-debug` runs a gameplay-only shell for fast iteration.

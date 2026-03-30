@@ -1,9 +1,13 @@
 use bevy::prelude::*;
 
 use crate::features::{
-    camera::CameraFeaturePlugin, debug::DebugFeaturePlugin, gameplay::GameplayFeaturePlugin,
-    input::InputFeaturePlugin, music::MusicFeaturePlugin, ui::UiFeaturePlugin,
-    world::WorldFeaturePlugin,
+    camera::CameraFeaturePlugin,
+    debug::DebugFeaturePlugin,
+    gameplay::GameplayFeaturePlugin,
+    input::InputFeaturePlugin,
+    music::MusicFeaturePlugin,
+    ui::UiFeaturePlugin,
+    world::{RequestWorldReset, WorldFeaturePlugin},
 };
 use crate::EnabledFeatures;
 
@@ -57,6 +61,7 @@ impl Plugin for GamePlugin {
         );
 
         app.add_systems(Startup, bootstrap_scene);
+        app.add_event::<RequestWorldReset>();
         app.add_plugins(PersistencePlugin);
 
         if self.enabled.input {

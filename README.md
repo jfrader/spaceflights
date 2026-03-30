@@ -2,6 +2,17 @@
 
 Foundation-first Rust + Bevy codebase for SPACEFLIGHTS.
 
+## Current Slice (Agent Checklist)
+- Third-person gameplay feel first (not full mission depth yet).
+- Space must read as deep: star background acts as distant orientation reference.
+- Dev demo (`run-dev`) includes a nearby planet flyby, then departure to a new trajectory.
+- Visual baseline matches spec intent: black background, sparse wireframe-like readability, seeded procedural world.
+
+## Current Implementation Notes
+- `run-dev` is the visual/gameplay-feel sandbox; `run` remains more conservative.
+- Planet silhouette uses an internal black occluder + outline to preserve readability against stars.
+- Full mission loop depth is intentionally deferred while feel/architecture are stabilized.
+
 ## Project Layout
 - `app/` - Bevy runtime app and plugin composition
 - `core/` - engine-agnostic domain contracts
@@ -61,6 +72,32 @@ Notes:
 - `SPACEFLIGHTS_MUSIC_SCALE=minor|major`
 
 ## Controls
+- Controls are action-bound via config (not hardcoded), with defaults below.
+- `Enter`: start from main menu
+- `Esc`: open main menu while in-game
+- `N`: start a new random seeded world
+- `R`: restart current seed
 - Hold `Left Mouse Button` + move mouse: look around
-- `[` and `]`: change ship speed
+- `W` / `S`: accelerate / brake
 - `1` / `2` / `3`: switch ship/module/eva mode
+- `A` / `D`: steer yaw left/right
+- Arrow `Up` / `Down`: pitch up/down
+
+UI flow:
+- Main menu on startup
+- Lightweight HUD while flying (mode/speed/seed/star count)
+
+Control binding env vars:
+- `SPACEFLIGHTS_KEY_SPEED_UP`
+- `SPACEFLIGHTS_KEY_SPEED_DOWN`
+- `SPACEFLIGHTS_KEY_MODE_SHIP`
+- `SPACEFLIGHTS_KEY_MODE_MODULE`
+- `SPACEFLIGHTS_KEY_MODE_EVA`
+- `SPACEFLIGHTS_KEY_YAW_LEFT`
+- `SPACEFLIGHTS_KEY_YAW_RIGHT`
+- `SPACEFLIGHTS_KEY_PITCH_UP`
+- `SPACEFLIGHTS_KEY_PITCH_DOWN`
+- `SPACEFLIGHTS_KEY_MENU_TOGGLE`
+- `SPACEFLIGHTS_KEY_MENU_CONFIRM`
+- `SPACEFLIGHTS_KEY_MENU_NEW_WORLD`
+- `SPACEFLIGHTS_KEY_MENU_RESTART_WORLD`

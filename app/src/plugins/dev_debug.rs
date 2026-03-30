@@ -17,7 +17,7 @@ struct DevDebugPlayer;
 
 #[derive(Resource, Debug, Clone, Copy)]
 struct DevDebugBaseDistance {
-    km: f64,
+    position_km: spaceflights_core::NavVector3Km,
 }
 
 #[derive(Resource, Debug, Default)]
@@ -96,7 +96,7 @@ fn initialize_mid_game_state(
     runtime.state.mission_elapsed_seconds = 3600.0;
 
     commands.insert_resource(DevDebugBaseDistance {
-        km: runtime.state.ship_distance_km,
+        position_km: runtime.state.ship_position_km,
     });
 
     initialized.done = true;
@@ -122,8 +122,14 @@ fn sync_player_transform(
         return;
     };
 
-    let traveled_km = runtime.state.ship_distance_km - base_distance.km;
-    transform.translation.z = -(traveled_km as f32) * KM_TO_WORLD;
+    let offset_x = runtime.state.ship_position_km.x - base_distance.position_km.x;
+    let offset_y = runtime.state.ship_position_km.y - base_distance.position_km.y;
+    let offset_z = runtime.state.ship_position_km.z - base_distance.position_km.z;
+    transform.translation = Vec3::new(
+        (offset_x as f32) * KM_TO_WORLD,
+        (offset_y as f32) * KM_TO_WORLD,
+        (offset_z as f32) * KM_TO_WORLD,
+    );
 }
 
 fn follow_player_camera(

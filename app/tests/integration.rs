@@ -1,10 +1,12 @@
 use bevy::prelude::*;
 
+use spaceflights_app::features::world::RequestWorldReset;
 use spaceflights_app::features::world::WorldRenderStats;
 use spaceflights_app::plugins::persistence::PersistenceHealth;
+use spaceflights_app::plugins::scene::CurrentSeed;
 use spaceflights_app::plugins::schedule::GameSet;
 use spaceflights_app::{build_app, build_gameplay_debug_app, EnabledFeatures, RuntimeMode};
-use spaceflights_core::{AppConfig, PersistenceBackend};
+use spaceflights_core::{AppConfig, PersistenceBackend, Seed};
 
 #[derive(Resource, Default, Debug)]
 struct ExecutionTrace(Vec<&'static str>);
@@ -134,6 +136,24 @@ fn world_counts_remain_bounded_over_many_updates() {
     let after = app.world().resource::<WorldRenderStats>().clone();
     assert_eq!(initial.star_count, after.star_count);
     assert_eq!(initial.debris_count, after.debris_count);
+}
+
+#[test]
+fn world_reset_event_rebuilds_seeded_world() {
+    let mut app = build_gameplay_debug_app(AppConfig::default(), RuntimeMode::Headless);
+    app.update();
+
+    let new_seed = Seed::new(0x1234_5678_9abc_def0);
+    app.world_mut()
+        .resource_mut::<Events<RequestWorldReset>>()
+        .send(RequestWorldReset { seed: new_seed });
+    app.update();
+
+    let current_seed = app.world().resource::<CurrentSeed>();
+    assert_eq!(current_seed.0.value(), new_seed.value());
+
+    let stats = app.world().resource::<WorldRenderStats>();
+    assert_eq!(stats.seed_label, format!("{:016x}", new_seed.value()));
 }
 
 fn marker_input(mut trace: ResMut<ExecutionTrace>) {

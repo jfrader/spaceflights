@@ -24,7 +24,7 @@ use features::gameplay::GameplayFeaturePlugin;
 use features::input::InputFeaturePlugin;
 use features::music::MusicFeaturePlugin;
 use features::ui::UiFeaturePlugin;
-use features::world::WorldFeaturePlugin;
+use features::world::{RequestWorldReset, WorldFeaturePlugin};
 use plugins::dev_debug::DevGameplayShellPlugin;
 use plugins::game::GamePlugin;
 use plugins::schedule::GameSet;
@@ -109,6 +109,7 @@ pub fn build_gameplay_debug_app(config: AppConfig, mode: RuntimeMode) -> App {
     app.insert_resource(Msaa::Off);
     app.insert_resource(AppConfigResource(config.clone()));
     app.insert_resource(BuildFlavorResource(BuildFlavor::DevDebug));
+    app.add_event::<RequestWorldReset>();
 
     match mode {
         RuntimeMode::Desktop => {
