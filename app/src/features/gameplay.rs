@@ -42,12 +42,17 @@ impl GameplayCommandQueue {
 impl Plugin for GameplayFeaturePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, initialize_gameplay)
-            .add_systems(Update, collect_gameplay_input.in_set(GameSet::Input))
             .add_systems(
                 Update,
                 reset_gameplay_on_world_reset.in_set(GameSet::Gameplay),
             )
-            .add_systems(FixedUpdate, run_gameplay_step.in_set(GameSet::Gameplay));
+            .add_systems(FixedUpdate, collect_gameplay_input.in_set(GameSet::Input))
+            .add_systems(
+                FixedUpdate,
+                run_gameplay_step
+                    .in_set(GameSet::Gameplay)
+                    .after(collect_gameplay_input),
+            );
     }
 }
 
@@ -72,10 +77,10 @@ fn collect_gameplay_input(
         return;
     }
 
-    if bindings.is_just_pressed(&keyboard, bindings.controls.gameplay.speed_up) {
+    if bindings.is_pressed(&keyboard, bindings.controls.gameplay.speed_up) {
         queue.push(GameCommand::IncreaseShipSpeed);
     }
-    if bindings.is_just_pressed(&keyboard, bindings.controls.gameplay.speed_down) {
+    if bindings.is_pressed(&keyboard, bindings.controls.gameplay.speed_down) {
         queue.push(GameCommand::DecreaseShipSpeed);
     }
 

@@ -48,9 +48,9 @@ impl Default for GameplayTuning {
     fn default() -> Self {
         Self {
             initial_speed_km_s: 25.0,
-            speed_step_km_s: 5.0,
+            speed_step_km_s: 20.0,
             min_speed_km_s: 0.0,
-            max_speed_km_s: 500.0,
+            max_speed_km_s: 5_000.0,
             turn_rate_rad_s: 0.75,
             pitch_limit_rad: 75.0_f64.to_radians(),
         }

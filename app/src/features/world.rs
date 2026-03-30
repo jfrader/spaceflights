@@ -1,4 +1,4 @@
-use bevy::math::primitives::{Annulus, Circle, Cuboid, Sphere};
+use bevy::math::primitives::{Annulus, Circle, Sphere};
 use bevy::prelude::*;
 use bevy::render::view::NoFrustumCulling;
 use spaceflights_core::{
@@ -13,11 +13,18 @@ use crate::{AppConfigResource, BuildFlavor, BuildFlavorResource};
 
 pub struct WorldFeaturePlugin;
 
-const FLYBY_COUNT: usize = 6;
-const FLYBY_RANGE_Z: f32 = 300.0;
-const FLYBY_RANGE_X: f32 = 160.0;
-const FLYBY_RANGE_Y: f32 = 90.0;
-const RENDER_DEBRIS_STRIDE: usize = 7;
+const FLYBY_COUNT: usize = 10;
+const FLYBY_RANGE_Z: f32 = 220.0;
+const FLYBY_RANGE_X: f32 = 130.0;
+const FLYBY_RANGE_Y: f32 = 76.0;
+const RENDER_DEBRIS_STRIDE: usize = 3;
+const DEBRIS_STREAM_RANGE_X: f32 = 240.0;
+const DEBRIS_STREAM_RANGE_Y: f32 = 120.0;
+const DEBRIS_STREAM_RANGE_Z: f32 = 300.0;
+const DUST_COUNT: usize = 220;
+const DUST_RANGE_X: f32 = 220.0;
+const DUST_RANGE_Y: f32 = 120.0;
+const DUST_RANGE_Z: f32 = 260.0;
 const WORLD_RENDER_SCALE: f32 = 0.03;
 const PLANET_RADIUS: f32 = 72.0;
 const PLANET_RING_HALF_WIDTH: f32 = 0.7;
@@ -31,7 +38,6 @@ const PLANET_DEPART_SPEED: f32 = 120.0;
 const STAR_BACKGROUND_RADIUS_MIN: f32 = 1_500.0;
 const STAR_BACKGROUND_RADIUS_RANGE: f32 = 5_000.0;
 const STAR_BACKGROUND_LAYER_RANGE: f32 = 380.0;
-const DEBRIS_TRAVEL_SCALE: f64 = 0.08;
 
 #[derive(Resource, Debug, Clone)]
 pub struct WorldRuntime {
@@ -61,8 +67,21 @@ struct StarVisual {
 }
 
 #[derive(Component)]
-struct DebrisVisual {
-    index: usize,
+struct DebrisParticle {
+    local_position: Vec3,
+    ambient_velocity: Vec3,
+    parallax_factor: f32,
+    scale: f32,
+}
+
+#[derive(Component, Clone, Copy)]
+struct DustVisual {
+    local_position: Vec3,
+    ambient_velocity: Vec3,
+    parallax_factor: f32,
+    wobble_phase: f32,
+    wobble_amplitude: f32,
+    scale: f32,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -235,10 +254,9 @@ fn spawn_visuals_with_meshes(
     snapshot: &WorldSnapshot,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    dev_flyby_demo_enabled: bool,
+    _dev_flyby_demo_enabled: bool,
 ) {
     let point_mesh = meshes.add(Mesh::from(Sphere::new(0.5)));
-    let rod_mesh = meshes.add(Mesh::from(Cuboid::from_size(Vec3::ONE)));
     let planet_fill_mesh = meshes.add(Mesh::from(Circle::new(
         (PLANET_RADIUS - PLANET_RING_HALF_WIDTH - PLANET_OCCLUDER_INSET).max(1.0),
     )));
@@ -257,29 +275,37 @@ fn spawn_visuals_with_meshes(
 
     let debris_materials = [
         materials.add(StandardMaterial {
-            emissive: LinearRgba::rgb(0.08, 0.10, 0.14),
-            base_color: Color::srgb(0.50, 0.58, 0.68),
+            emissive: LinearRgba::rgb(0.004, 0.004, 0.005),
+            base_color: Color::srgb(0.48, 0.50, 0.54),
             unlit: true,
             ..Default::default()
         }),
         materials.add(StandardMaterial {
-            emissive: LinearRgba::rgb(0.14, 0.10, 0.06),
-            base_color: Color::srgb(0.76, 0.62, 0.46),
+            emissive: LinearRgba::rgb(0.004, 0.004, 0.003),
+            base_color: Color::srgb(0.50, 0.48, 0.46),
             unlit: true,
             ..Default::default()
         }),
     ];
 
+    let dust_material = materials.add(StandardMaterial {
+        emissive: LinearRgba::rgb(0.34, 0.34, 0.38),
+        base_color: Color::srgb(0.84, 0.86, 0.92),
+        unlit: true,
+        cull_mode: None,
+        ..Default::default()
+    });
+
     let flyby_materials = [
         materials.add(StandardMaterial {
-            emissive: LinearRgba::rgb(0.10, 0.14, 0.20),
-            base_color: Color::srgb(0.60, 0.72, 0.90),
+            emissive: LinearRgba::rgb(0.016, 0.020, 0.026),
+            base_color: Color::srgb(0.66, 0.72, 0.80),
             unlit: true,
             ..Default::default()
         }),
         materials.add(StandardMaterial {
-            emissive: LinearRgba::rgb(0.16, 0.11, 0.07),
-            base_color: Color::srgb(0.80, 0.66, 0.52),
+            emissive: LinearRgba::rgb(0.016, 0.013, 0.010),
+            base_color: Color::srgb(0.68, 0.64, 0.58),
             unlit: true,
             ..Default::default()
         }),
@@ -308,34 +334,35 @@ fn spawn_visuals_with_meshes(
         if index % RENDER_DEBRIS_STRIDE != 0 {
             continue;
         }
+        let particle = build_debris_particle(*debris);
 
         commands.spawn((
             PbrBundle {
-                mesh: rod_mesh.clone(),
+                mesh: point_mesh.clone(),
                 material: debris_materials[index % debris_materials.len()].clone(),
                 transform: Transform {
-                    translation: to_vec3(debris.position),
-                    rotation: debris_visual_rotation(index),
-                    scale: debris_visual_scale(*debris),
+                    translation: particle.local_position,
+                    rotation: Quat::IDENTITY,
+                    scale: Vec3::splat(particle.scale),
                 },
                 ..Default::default()
             },
             WorldVisual,
-            DebrisVisual { index },
+            NoFrustumCulling,
+            particle,
             Name::new(format!("Debris-{index}")),
         ));
     }
 
-    if dev_flyby_demo_enabled {
-        spawn_flyby_visuals(commands, snapshot, rod_mesh, flyby_materials);
-    }
+    spawn_dust_visuals(commands, snapshot, point_mesh.clone(), dust_material);
+    spawn_flyby_visuals(commands, snapshot, point_mesh, flyby_materials);
     spawn_planet_border(commands, planet_fill_mesh, planet_ring_mesh, materials);
 }
 
 fn spawn_headless_placeholders(
     commands: &mut Commands,
     snapshot: &WorldSnapshot,
-    dev_flyby_demo_enabled: bool,
+    _dev_flyby_demo_enabled: bool,
 ) {
     for (index, star) in snapshot.stars.iter().enumerate() {
         commands.spawn((
@@ -350,29 +377,38 @@ fn spawn_headless_placeholders(
         if index % RENDER_DEBRIS_STRIDE != 0 {
             continue;
         }
+        let particle = build_debris_particle(*debris);
 
         commands.spawn((
             SpatialBundle::from_transform(Transform {
-                translation: to_vec3(debris.position),
-                scale: Vec3::splat(debris.scale),
+                translation: particle.local_position,
+                scale: Vec3::splat(particle.scale),
                 ..Default::default()
             }),
             WorldVisual,
-            DebrisVisual { index },
+            particle,
             Name::new(format!("HeadlessDebris-{index}")),
         ));
     }
 
-    if dev_flyby_demo_enabled {
-        for index in 0..FLYBY_COUNT {
-            let flyby = build_flyby_visual(snapshot.seed.value(), index);
-            commands.spawn((
-                SpatialBundle::from_transform(Transform::from_translation(flyby.base_position)),
-                WorldVisual,
-                flyby,
-                Name::new(format!("HeadlessFlyby-{index}")),
-            ));
-        }
+    for index in 0..DUST_COUNT {
+        let dust = build_dust_visual(snapshot.seed.value(), index);
+        commands.spawn((
+            SpatialBundle::from_transform(Transform::from_translation(dust.local_position)),
+            WorldVisual,
+            dust,
+            Name::new(format!("HeadlessDust-{index}")),
+        ));
+    }
+
+    for index in 0..FLYBY_COUNT {
+        let flyby = build_flyby_visual(snapshot.seed.value(), index);
+        commands.spawn((
+            SpatialBundle::from_transform(Transform::from_translation(flyby.base_position)),
+            WorldVisual,
+            flyby,
+            Name::new(format!("HeadlessFlyby-{index}")),
+        ));
     }
 
     spawn_headless_planet_border(commands);
@@ -405,7 +441,7 @@ fn sync_world_visuals(
     mut stars: Query<
         (&StarVisual, &mut Transform),
         (
-            Without<DebrisVisual>,
+            Without<DebrisParticle>,
             Without<FlybyVisual>,
             Without<PlanetBorder>,
             Without<PlanetOccluder>,
@@ -413,7 +449,7 @@ fn sync_world_visuals(
         ),
     >,
     mut debris: Query<
-        (&DebrisVisual, &mut Transform),
+        (&mut DebrisParticle, &mut Transform),
         (
             Without<StarVisual>,
             Without<FlybyVisual>,
@@ -426,7 +462,19 @@ fn sync_world_visuals(
         (&FlybyVisual, &mut Transform),
         (
             Without<StarVisual>,
-            Without<DebrisVisual>,
+            Without<DebrisParticle>,
+            Without<DustVisual>,
+            Without<PlanetBorder>,
+            Without<PlanetOccluder>,
+            Without<Camera3d>,
+        ),
+    >,
+    mut dust: Query<
+        (&mut DustVisual, &mut Transform),
+        (
+            Without<StarVisual>,
+            Without<DebrisParticle>,
+            Without<FlybyVisual>,
             Without<PlanetBorder>,
             Without<PlanetOccluder>,
             Without<Camera3d>,
@@ -453,8 +501,14 @@ fn sync_world_visuals(
         .as_ref()
         .map_or(0.0, |gameplay| gameplay.state.ship_distance_km);
     let elapsed = time.elapsed_seconds_f64();
-    let profile = runtime.snapshot.profile;
     let elapsed_f32 = elapsed as f32;
+    let ship_center_world = gameplay.as_ref().map_or(Vec3::ZERO, |gameplay| {
+        Vec3::new(
+            gameplay.state.ship_position_km.x as f32 * WORLD_RENDER_SCALE,
+            gameplay.state.ship_position_km.y as f32 * WORLD_RENDER_SCALE,
+            gameplay.state.ship_position_km.z as f32 * WORLD_RENDER_SCALE,
+        )
+    });
     let planet_center = if runtime.dev_flyby_demo_enabled {
         planet_center_for_travel(elapsed_f32)
     } else {
@@ -479,18 +533,45 @@ fn sync_world_visuals(
         },
     );
 
-    for (marker, mut transform) in &mut debris {
-        let data = runtime.snapshot.horizon_debris[marker.index];
-        transform.translation = world_position_for_debris(data, traveled_km, elapsed, profile);
+    let dt = time.delta_seconds();
+    let ship_velocity = ship_velocity_world(gameplay.as_deref());
+
+    for (mut particle, mut transform) in &mut debris {
+        let relative_velocity =
+            particle.ambient_velocity - ship_velocity * particle.parallax_factor;
+        particle.local_position += relative_velocity * dt;
+        particle.local_position.x = wrap_axis_f32(particle.local_position.x, DEBRIS_STREAM_RANGE_X);
+        particle.local_position.y = wrap_axis_f32(particle.local_position.y, DEBRIS_STREAM_RANGE_Y);
+        particle.local_position.z = wrap_axis_f32(particle.local_position.z, DEBRIS_STREAM_RANGE_Z);
+        transform.translation = ship_center_world + particle.local_position;
+        transform.scale = Vec3::splat(particle.scale);
     }
 
     for (flyby, mut transform) in &mut flybys {
         let position = world_position_for_flyby(*flyby, traveled_km as f32, elapsed as f32);
         transform.translation = position;
-        let yaw = flyby.spin_rate.y * elapsed as f32;
-        let pitch = flyby.spin_rate.x * elapsed as f32;
-        let roll = flyby.spin_rate.z * elapsed as f32;
-        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
+        let ship_speed_km_s = gameplay
+            .as_ref()
+            .map_or(0.0_f32, |state| state.state.ship_speed_km_s as f32);
+        let velocity = world_velocity_for_flyby(*flyby, elapsed_f32, ship_speed_km_s);
+        let forward = velocity.normalize_or_zero();
+        if forward.length_squared() > 0.0 {
+            let align = Quat::from_rotation_arc(Vec3::X, forward);
+            let roll = Quat::from_axis_angle(forward, elapsed_f32 * flyby.spin_rate.z);
+            transform.rotation = align * roll;
+        }
+    }
+
+    for (mut dust, mut transform) in &mut dust {
+        let relative_velocity = dust.ambient_velocity - ship_velocity * dust.parallax_factor;
+        dust.local_position += relative_velocity * dt;
+        dust.local_position.x = wrap_axis_f32(dust.local_position.x, DUST_RANGE_X);
+        dust.local_position.y = wrap_axis_f32(dust.local_position.y, DUST_RANGE_Y);
+        dust.local_position.z = wrap_axis_f32(dust.local_position.z, DUST_RANGE_Z);
+        let wobble = (elapsed_f32 * 0.55 + dust.wobble_phase).sin() * dust.wobble_amplitude;
+        let wobble_offset = Vec3::new(wobble, wobble * 0.35, 0.0);
+        transform.translation = ship_center_world + dust.local_position + wobble_offset;
+        transform.scale = Vec3::splat(dust.scale);
     }
 
     let to_camera = camera_pos.map_or(Vec3::Z, |camera| {
@@ -542,47 +623,71 @@ fn world_position_for_star_background(
     center_world + direction * radius
 }
 
-fn world_position_for_debris(
-    debris: HorizonDebris,
-    traveled_km: f64,
-    elapsed_seconds: f64,
-    profile: WorldProfile,
-) -> Vec3 {
-    let moved_x = debris.position.x + debris.drift.x * elapsed_seconds * 0.6;
-    let moved_y = debris.position.y + debris.drift.y * elapsed_seconds * 0.8;
-    let moved_z = debris.position.z + debris.drift.z * elapsed_seconds * 0.25;
-
-    let z = wrap_axis(
-        moved_z + traveled_km * debris.parallax * DEBRIS_TRAVEL_SCALE,
-        profile.world_extent_km,
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Debris particle stream is render-space f32 while worldgen payloads are f64."
+)]
+fn build_debris_particle(debris: HorizonDebris) -> DebrisParticle {
+    let local_position = to_vec3(debris.position);
+    let ambient_velocity = Vec3::new(
+        debris.drift.x as f32 * WORLD_RENDER_SCALE * 0.85,
+        debris.drift.y as f32 * WORLD_RENDER_SCALE * 0.75,
+        debris.drift.z as f32 * WORLD_RENDER_SCALE * 0.85,
     );
-    let x = wrap_axis(moved_x, profile.world_extent_km);
-    let y = wrap_axis(moved_y, profile.horizon_band_km.max(1.0));
+    let parallax_factor = 1.15 + (1.0 - debris.parallax as f32).clamp(0.0, 1.0) * 1.20;
+    let scale = debris_visual_scale(debris).x;
 
-    to_vec3(spaceflights_core::Vec3d { x, y, z })
+    DebrisParticle {
+        local_position,
+        ambient_velocity,
+        parallax_factor,
+        scale,
+    }
 }
 
-fn wrap_axis(value: f64, extent: f64) -> f64 {
-    let width = extent * 2.0;
-    (value + extent).rem_euclid(width) - extent
+fn spawn_dust_visuals(
+    commands: &mut Commands,
+    snapshot: &WorldSnapshot,
+    point_mesh: Handle<Mesh>,
+    dust_material: Handle<StandardMaterial>,
+) {
+    for index in 0..DUST_COUNT {
+        let dust = build_dust_visual(snapshot.seed.value(), index);
+        commands.spawn((
+            PbrBundle {
+                mesh: point_mesh.clone(),
+                material: dust_material.clone(),
+                transform: Transform {
+                    translation: dust.local_position,
+                    scale: Vec3::splat(dust.scale),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            WorldVisual,
+            NoFrustumCulling,
+            dust,
+            Name::new(format!("Dust-{index}")),
+        ));
+    }
 }
 
 fn spawn_flyby_visuals(
     commands: &mut Commands,
     snapshot: &WorldSnapshot,
-    rod_mesh: Handle<Mesh>,
+    point_mesh: Handle<Mesh>,
     flyby_materials: [Handle<StandardMaterial>; 2],
 ) {
     for index in 0..FLYBY_COUNT {
         let flyby = build_flyby_visual(snapshot.seed.value(), index);
         let (material, scale) = match flyby.style {
-            FlybyStyle::Asteroid => (flyby_materials[1].clone(), Vec3::new(4.8, 0.12, 0.12)),
-            FlybyStyle::Comet => (flyby_materials[0].clone(), Vec3::new(7.6, 0.08, 0.08)),
+            FlybyStyle::Asteroid => (flyby_materials[1].clone(), Vec3::splat(0.18)),
+            FlybyStyle::Comet => (flyby_materials[0].clone(), Vec3::splat(0.13)),
         };
 
         commands.spawn((
             PbrBundle {
-                mesh: rod_mesh.clone(),
+                mesh: point_mesh.clone(),
                 material,
                 transform: Transform {
                     translation: flyby.base_position,
@@ -595,6 +700,37 @@ fn spawn_flyby_visuals(
             flyby,
             Name::new(format!("Flyby-{index}")),
         ));
+    }
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "Seed-derived render-only dust parameters intentionally use f32."
+)]
+fn build_dust_visual(seed_value: u64, index: usize) -> DustVisual {
+    let seed = spaceflights_core::Seed::new(seed_value);
+    let base = 30_000 + index as u64 * 11;
+    let local_position = Vec3::new(
+        map_hash(seed.nth_value(base), -DUST_RANGE_X, DUST_RANGE_X),
+        map_hash(seed.nth_value(base + 1), -DUST_RANGE_Y, DUST_RANGE_Y),
+        map_hash(seed.nth_value(base + 2), -DUST_RANGE_Z, DUST_RANGE_Z),
+    );
+    let ambient_velocity = Vec3::new(
+        map_hash(seed.nth_value(base + 3), -0.45, 0.45),
+        map_hash(seed.nth_value(base + 4), -0.25, 0.25),
+        map_hash(seed.nth_value(base + 5), -14.0, -5.0),
+    );
+    let wobble_phase = map_hash(seed.nth_value(base + 6), 0.0, std::f32::consts::TAU);
+    let wobble_amplitude = map_hash(seed.nth_value(base + 8), 0.15, 1.2);
+    let parallax_factor = map_hash(seed.nth_value(base + 9), 1.45, 2.25);
+    let scale = map_hash(seed.nth_value(base + 7), 0.05, 0.15);
+    DustVisual {
+        local_position,
+        ambient_velocity,
+        parallax_factor,
+        wobble_phase,
+        wobble_amplitude,
+        scale,
     }
 }
 
@@ -670,6 +806,36 @@ fn world_position_for_flyby(flyby: FlybyVisual, traveled_km: f32, elapsed_second
 
     let ship_z = -traveled_km * 0.006;
     Vec3::new(x, y, ship_z + z_local)
+}
+
+fn world_velocity_for_flyby(
+    flyby: FlybyVisual,
+    elapsed_seconds: f32,
+    ship_speed_km_s: f32,
+) -> Vec3 {
+    let phase = elapsed_seconds * flyby.wobble_frequency + flyby.wobble_phase;
+    let wobble_velocity = phase.cos() * flyby.wobble_amplitude * flyby.wobble_frequency;
+    let vx = flyby.drift.x + wobble_velocity;
+    let vy = flyby.drift.y + wobble_velocity * 0.2;
+    let vz = -flyby.speed_km_s - ship_speed_km_s * 0.006;
+    Vec3::new(vx, vy, vz)
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Gameplay state is f64 domain data projected into render-space f32 velocity."
+)]
+fn ship_velocity_world(gameplay: Option<&GameplayRuntime>) -> Vec3 {
+    let Some(gameplay) = gameplay else {
+        return Vec3::ZERO;
+    };
+
+    let speed_world = gameplay.state.ship_speed_km_s as f32 * WORLD_RENDER_SCALE;
+    let yaw = gameplay.state.ship_yaw_rad as f32;
+    let pitch = gameplay.state.ship_pitch_rad as f32;
+    let cos_pitch = pitch.cos();
+    let forward = Vec3::new(yaw.sin() * cos_pitch, pitch.sin(), -yaw.cos() * cos_pitch);
+    forward.normalize_or_zero() * speed_world
 }
 
 fn wrap_axis_f32(value: f32, extent: f32) -> f32 {
@@ -774,7 +940,8 @@ fn world_units_per_pixel_at_depth(depth: f32, fov_rad: f32, viewport_height: f32
 
 fn debris_visual_scale(debris: HorizonDebris) -> Vec3 {
     let base = debris.scale.max(0.35);
-    Vec3::new(base * 1.4, 0.05, 0.05)
+    let scale = (base * 0.84).clamp(0.18, 0.34);
+    Vec3::splat(scale)
 }
 
 fn planet_center_for_travel(elapsed_seconds: f32) -> Vec3 {
@@ -831,27 +998,6 @@ fn star_direction_from_star(star: StarPoint, seed_value: u64, star_index: usize)
         jitter_phi.cos(),
     );
     (base * 0.92 + jitter * 0.08).normalize_or_zero()
-}
-
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "Deterministic index hash is projected to f32 angles for render transforms."
-)]
-fn debris_visual_rotation(index: usize) -> Quat {
-    let hash = hash_index(index);
-    let yaw = hash_unit(hash ^ 0x9e37_79b9_7f4a_7c15) * std::f32::consts::TAU;
-    let pitch = (hash_unit(hash ^ 0xa24b_aed4_963e_e407) - 0.5) * 0.7;
-    let roll = (hash_unit(hash ^ 0x3c79_ac49_2ba7_b653) - 0.5) * 1.0;
-    Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll)
-}
-
-fn hash_index(index: usize) -> u64 {
-    let mut x = index as u64 + 0x9e37_79b9_7f4a_7c15;
-    x ^= x >> 30;
-    x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    x ^= x >> 27;
-    x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
-    x ^ (x >> 31)
 }
 
 #[allow(

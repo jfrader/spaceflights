@@ -15,6 +15,17 @@ All significant changes must be recorded here.
 - `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`
 
 ## Unreleased
+- `fix(world): remove residual neon flyby streaks by rendering flybys as dim small particles and shrinking debris scale`
+- `refactor(world): replace debris/dust position formulas with per-particle relative-velocity integration against ship velocity`
+- `fix(world): increase ship-relative parallax influence for debris/dust so particle flow scales with ship speed`
+- `build(dev): keep run commands on normal cargo fingerprint/incremental rebuilds (no forced clean)`
+- `fix(world): switch debris to ship-relative tiled field so acceleration yields coherent forward-flow cues`
+- `fix(world): replace debris rods with neutral particle bodies and camera-centered ambient streaming`
+- `fix(world): decouple debris motion from ship speed to avoid unrealistic acceleration coupling`
+- `fix(world): retune debris to neutral non-neon materials and local recycled streaming for continuous flow`
+- `fix(world): align debris orientation with travel vector to reduce popping and improve motion readability`
+- `feat(world): add deterministic near-field dust pass and denser ambient flybys for a more alive universe`
+- `fix(world): align flyby streak orientation to travel direction to remove trajectory/shape mismatch`
 - `fix(input): switch default gameplay bindings to W/S acceleration and A/D yaw for immediate playability`
 - `fix(world): remove starfield shell patterning by deriving directions from worldgen star positions with deterministic jitter`
 - `feat(ui): split startup main menu from in-game HUD and add click-or-confirm start flow`
