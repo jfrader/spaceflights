@@ -47,8 +47,8 @@ fn schedule_order_is_deterministic() {
             "input",
             "gameplay",
             "music",
-            "world",
             "camera",
+            "world",
             "ui",
             "debug",
         ]

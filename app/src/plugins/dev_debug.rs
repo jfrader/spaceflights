@@ -1,8 +1,11 @@
+use bevy::core_pipeline::fxaa::{Fxaa, Sensitivity};
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::prelude::*;
 use spaceflights_core::ControlMode;
 
-use crate::features::camera::MouseLookCamera;
+use crate::features::camera::{CameraFlowSet, MouseLookCamera};
 use crate::features::gameplay::GameplayRuntime;
+use crate::plugins::schedule::GameSet;
 
 const KM_TO_WORLD: f32 = 0.006;
 const CAMERA_OFFSET: Vec3 = Vec3::new(0.0, 3.0, 10.0);
@@ -26,9 +29,14 @@ impl Plugin for DevGameplayShellPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(DevDebugInitialized::default())
             .add_systems(Startup, spawn_dev_debug_scene)
-            .add_systems(Update, initialize_mid_game_state)
-            .add_systems(Update, sync_player_transform)
-            .add_systems(Update, follow_player_camera);
+            .add_systems(Update, initialize_mid_game_state.in_set(GameSet::Gameplay))
+            .add_systems(Update, sync_player_transform.in_set(GameSet::Gameplay))
+            .add_systems(
+                Update,
+                follow_player_camera
+                    .in_set(GameSet::Camera)
+                    .in_set(CameraFlowSet::Follow),
+            );
     }
 }
 
@@ -44,8 +52,15 @@ fn spawn_dev_debug_scene(
                 far: 8_000.0,
                 ..Default::default()
             }),
+            tonemapping: Tonemapping::None,
+            deband_dither: DebandDither::Disabled,
             transform: Transform::from_xyz(0.0, 3.0, 10.0),
             ..Default::default()
+        },
+        Fxaa {
+            enabled: true,
+            edge_threshold: Sensitivity::High,
+            edge_threshold_min: Sensitivity::Medium,
         },
         MouseLookCamera,
         Name::new("DevDebugCamera"),

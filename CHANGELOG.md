@@ -15,6 +15,19 @@ All significant changes must be recorded here.
 - `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`
 
 ## Unreleased
+- `fix(world): prevent starfield shell-outside artifact at high mission distance and randomize star depth to remove universe-edge ring`
+- `fix(world): stabilize seeded starfield with pixel-calibrated star scale and FXAA camera pass to reduce shimmer/flicker`
+- `fix(world): anchor star shell to ship-space center with fixed seeded radius to eliminate camera-orbit star flicker`
+- `fix(camera): enforce deterministic camera flow order (mouse look before follow camera) to remove frame-order star jitter`
+- `fix(render): disable 3D tonemapping/deband dither for stable star brightness during camera motion`
+- `fix(world): resolve starfield jitter by sampling camera Transform in-frame and running camera systems before world sync`
+- `refactor(debug): schedule dev follow-camera in GameSet::Camera for deterministic render ordering`
+- `fix(world): generate seeded uniform sky directions for stars to prevent camera-angle dropout`
+- `feat(worldgen): increase base star counts in main/dev profiles for denser space readability`
+- `fix(world): tune planet annulus width thinner and raise star size/brightness for closer MVP visual parity`
+- `refactor(world): replace segmented planet rim with single annulus + disk meshes to remove close-range border dropout`
+- `fix(world): decouple star shell behavior from camera orbit and base it on ship-planet distance for stable look-around`
+- `fix(world): render stars as small spheres instead of cube points to reduce camera-motion shimmer`
 - `fix(world): stabilize star visibility by scaling point size with background shell distance`
 - `fix(world): increase star shell planet margin and widen flyby spline clearance to avoid close-pass artifacts`
 - `fix(world): clamp background star shell radius so stars remain visible during long-distance flyby departure`

@@ -74,7 +74,7 @@ pub fn build_app(config: AppConfig, mode: RuntimeMode, enabled: EnabledFeatures)
 
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK));
-    app.insert_resource(Msaa::Sample4);
+    app.insert_resource(Msaa::Off);
     app.insert_resource(AppConfigResource(config.clone()));
     app.insert_resource(BuildFlavorResource(BuildFlavor::Main));
 
@@ -106,7 +106,7 @@ pub fn build_gameplay_debug_app(config: AppConfig, mode: RuntimeMode) -> App {
 
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK));
-    app.insert_resource(Msaa::Sample4);
+    app.insert_resource(Msaa::Off);
     app.insert_resource(AppConfigResource(config.clone()));
     app.insert_resource(BuildFlavorResource(BuildFlavor::DevDebug));
 
@@ -132,8 +132,8 @@ pub fn build_gameplay_debug_app(config: AppConfig, mode: RuntimeMode) -> App {
             GameSet::Input,
             GameSet::Gameplay,
             GameSet::Music,
-            GameSet::World,
             GameSet::Camera,
+            GameSet::World,
             GameSet::Ui,
         )
             .chain(),
@@ -144,8 +144,8 @@ pub fn build_gameplay_debug_app(config: AppConfig, mode: RuntimeMode) -> App {
             GameSet::Input,
             GameSet::Gameplay,
             GameSet::Music,
-            GameSet::World,
             GameSet::Camera,
+            GameSet::World,
             GameSet::Ui,
         )
             .chain(),

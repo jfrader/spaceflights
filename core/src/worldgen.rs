@@ -65,19 +65,19 @@ pub fn profile_from_preset(
             12_000.0,
             [
                 StarLayerProfile {
-                    count: 320,
+                    count: 460,
                     depth_min_km: -2_500.0,
                     depth_max_km: 2_500.0,
                     parallax: 0.15,
                 },
                 StarLayerProfile {
-                    count: 220,
+                    count: 320,
                     depth_min_km: -6_000.0,
                     depth_max_km: 6_000.0,
                     parallax: 0.07,
                 },
                 StarLayerProfile {
-                    count: 140,
+                    count: 210,
                     depth_min_km: -10_000.0,
                     depth_max_km: 10_000.0,
                     parallax: 0.03,
@@ -91,19 +91,19 @@ pub fn profile_from_preset(
             8_500.0,
             [
                 StarLayerProfile {
-                    count: 240,
+                    count: 420,
                     depth_min_km: -2_000.0,
                     depth_max_km: 2_000.0,
                     parallax: 0.17,
                 },
                 StarLayerProfile {
-                    count: 160,
+                    count: 300,
                     depth_min_km: -4_500.0,
                     depth_max_km: 4_500.0,
                     parallax: 0.08,
                 },
                 StarLayerProfile {
-                    count: 110,
+                    count: 200,
                     depth_min_km: -8_000.0,
                     depth_max_km: 8_000.0,
                     parallax: 0.035,

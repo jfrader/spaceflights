@@ -1,3 +1,5 @@
+use bevy::core_pipeline::fxaa::{Fxaa, Sensitivity};
+use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::ecs::event::ManualEventReader;
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
@@ -7,6 +9,12 @@ use crate::AppConfigResource;
 
 pub struct CameraFeaturePlugin;
 pub struct MouseLookPlugin;
+
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CameraFlowSet {
+    MouseLook,
+    Follow,
+}
 
 #[derive(Component)]
 pub struct FoundationCamera;
@@ -45,8 +53,17 @@ impl Plugin for CameraFeaturePlugin {
 
 impl Plugin for MouseLookPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, initialize_mouse_look_state)
-            .add_systems(Update, apply_mouse_look.in_set(GameSet::Camera));
+        app.configure_sets(
+            Update,
+            (CameraFlowSet::MouseLook, CameraFlowSet::Follow).chain(),
+        )
+        .add_systems(Startup, initialize_mouse_look_state)
+        .add_systems(
+            Update,
+            apply_mouse_look
+                .in_set(GameSet::Camera)
+                .in_set(CameraFlowSet::MouseLook),
+        );
     }
 }
 
@@ -66,8 +83,15 @@ fn spawn_foundation_camera(mut commands: Commands) {
                 far: 8_000.0,
                 ..Default::default()
             }),
+            tonemapping: Tonemapping::None,
+            deband_dither: DebandDither::Disabled,
             transform: Transform::from_xyz(0.0, 2.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..Default::default()
+        },
+        Fxaa {
+            enabled: true,
+            edge_threshold: Sensitivity::High,
+            edge_threshold_min: Sensitivity::Medium,
         },
         FoundationCamera,
         MouseLookCamera,

@@ -1,4 +1,4 @@
-use bevy::math::primitives::{Cuboid, Sphere};
+use bevy::math::primitives::{Annulus, Circle, Cuboid, Sphere};
 use bevy::prelude::*;
 use bevy::render::view::NoFrustumCulling;
 use spaceflights_core::{
@@ -19,19 +19,16 @@ const FLYBY_RANGE_Y: f32 = 90.0;
 const RENDER_DEBRIS_STRIDE: usize = 7;
 const WORLD_RENDER_SCALE: f32 = 0.03;
 const PLANET_RADIUS: f32 = 72.0;
-const PLANET_SEGMENTS: usize = 360;
-const PLANET_SEGMENT_LEN: f32 = 1.35;
-const PLANET_SEGMENT_THICKNESS: f32 = 0.22;
+const PLANET_RING_HALF_WIDTH: f32 = 0.7;
 const PLANET_OCCLUDER_RADIUS_SCALE: f32 = 0.94;
 const PLANET_BASE_X: f32 = 18.0;
 const PLANET_BASE_Y: f32 = -22.0;
 const PLANET_FLYBY_START_Z: f32 = -1_150.0;
 const PLANET_FLYBY_DURATION_S: f32 = 12.0;
 const PLANET_DEPART_SPEED: f32 = 120.0;
-const STAR_BACKGROUND_BASE_RADIUS: f32 = 2_400.0;
-const STAR_BACKGROUND_LAYER_RANGE: f32 = 700.0;
-const STAR_BACKGROUND_MAX_RADIUS: f32 = 5_200.0;
-const STAR_BACKGROUND_PLANET_MARGIN: f32 = 1_600.0;
+const STAR_BACKGROUND_SHELL_RADIUS: f32 = 4_200.0;
+const STAR_BACKGROUND_LAYER_RANGE: f32 = 420.0;
+const STAR_BACKGROUND_DEPTH_JITTER_RANGE: f32 = 2_200.0;
 const DEBRIS_TRAVEL_SCALE: f64 = 0.08;
 
 #[derive(Resource, Debug, Clone)]
@@ -76,13 +73,11 @@ enum FlybyStyle {
     Comet,
 }
 
-#[derive(Component, Clone, Copy)]
-struct PlanetBorderSegment {
-    angle_rad: f32,
-}
-
 #[derive(Component)]
 struct PlanetOccluder;
+
+#[derive(Component)]
+struct PlanetBorder;
 
 impl Plugin for WorldFeaturePlugin {
     fn build(&self, app: &mut App) {
@@ -148,15 +143,21 @@ fn spawn_visuals_with_meshes(
     materials: &mut Assets<StandardMaterial>,
     dev_flyby_demo_enabled: bool,
 ) {
-    let point_mesh = meshes.add(Mesh::from(Cuboid::from_size(Vec3::ONE)));
+    let point_mesh = meshes.add(Mesh::from(Sphere::new(0.5)));
     let rod_mesh = meshes.add(Mesh::from(Cuboid::from_size(Vec3::ONE)));
-    let planet_segment_mesh = meshes.add(Mesh::from(Cuboid::from_size(Vec3::ONE)));
-    let planet_occluder_mesh = meshes.add(Mesh::from(Sphere::new(1.0)));
+    let planet_fill_mesh = meshes.add(Mesh::from(Circle::new(
+        PLANET_RADIUS * PLANET_OCCLUDER_RADIUS_SCALE,
+    )));
+    let planet_ring_mesh = meshes.add(Mesh::from(Annulus::new(
+        (PLANET_RADIUS - PLANET_RING_HALF_WIDTH).max(1.0),
+        PLANET_RADIUS + PLANET_RING_HALF_WIDTH,
+    )));
 
     let star_material = materials.add(StandardMaterial {
-        emissive: LinearRgba::rgb(2.2, 2.2, 2.2),
+        emissive: LinearRgba::rgb(2.4, 2.4, 2.4),
         base_color: Color::srgb(1.0, 1.0, 1.0),
         unlit: true,
+        cull_mode: None,
         ..Default::default()
     });
 
@@ -197,11 +198,12 @@ fn spawn_visuals_with_meshes(
                 material: star_material.clone(),
                 transform: Transform {
                     translation: to_vec3(star.position),
-                    scale: Vec3::splat(star_visual_scale(*star)),
+                    scale: Vec3::splat(star_initial_scale(*star)),
                     ..Default::default()
                 },
                 ..Default::default()
             },
+            NoFrustumCulling,
             StarVisual { index },
             Name::new(format!("Star-{index}")),
         ));
@@ -231,12 +233,7 @@ fn spawn_visuals_with_meshes(
     if dev_flyby_demo_enabled {
         spawn_flyby_visuals(commands, snapshot, rod_mesh, flyby_materials);
     }
-    spawn_planet_border(
-        commands,
-        planet_segment_mesh,
-        planet_occluder_mesh,
-        materials,
-    );
+    spawn_planet_border(commands, planet_fill_mesh, planet_ring_mesh, materials);
 }
 
 fn spawn_headless_placeholders(
@@ -302,16 +299,18 @@ fn to_vec3(vec: spaceflights_core::Vec3d) -> Vec3 {
 )]
 fn sync_world_visuals(
     time: Res<Time>,
+    config: Res<AppConfigResource>,
     runtime: Res<WorldRuntime>,
     gameplay: Option<Res<GameplayRuntime>>,
-    camera_query: Query<&GlobalTransform, With<Camera3d>>,
+    camera_query: Query<(&Camera, &Projection, &Transform), With<Camera3d>>,
     mut stars: Query<
         (&StarVisual, &mut Transform),
         (
             Without<DebrisVisual>,
             Without<FlybyVisual>,
-            Without<PlanetBorderSegment>,
+            Without<PlanetBorder>,
             Without<PlanetOccluder>,
+            Without<Camera3d>,
         ),
     >,
     mut debris: Query<
@@ -319,8 +318,9 @@ fn sync_world_visuals(
         (
             Without<StarVisual>,
             Without<FlybyVisual>,
-            Without<PlanetBorderSegment>,
+            Without<PlanetBorder>,
             Without<PlanetOccluder>,
+            Without<Camera3d>,
         ),
     >,
     mut flybys: Query<
@@ -328,15 +328,27 @@ fn sync_world_visuals(
         (
             Without<StarVisual>,
             Without<DebrisVisual>,
-            Without<PlanetBorderSegment>,
+            Without<PlanetBorder>,
             Without<PlanetOccluder>,
+            Without<Camera3d>,
         ),
     >,
     mut planet_occluders: Query<
         &mut Transform,
-        (With<PlanetOccluder>, Without<PlanetBorderSegment>),
+        (
+            With<PlanetOccluder>,
+            Without<PlanetBorder>,
+            Without<Camera3d>,
+        ),
     >,
-    mut planet_segments: Query<(&PlanetBorderSegment, &mut Transform), Without<PlanetOccluder>>,
+    mut planet_borders: Query<
+        &mut Transform,
+        (
+            With<PlanetBorder>,
+            Without<PlanetOccluder>,
+            Without<Camera3d>,
+        ),
+    >,
 ) {
     let traveled_km = gameplay
         .as_ref()
@@ -349,10 +361,24 @@ fn sync_world_visuals(
     } else {
         planet_center_static()
     };
-    let camera_pos = camera_query
-        .get_single()
-        .ok()
-        .map(GlobalTransform::translation);
+    let (camera_pos, camera_fov_rad, viewport_height) = camera_query.get_single().ok().map_or(
+        (
+            None,
+            std::f32::consts::FRAC_PI_4,
+            config.0.window.height as f32,
+        ),
+        |(camera, projection, transform)| {
+            let fov = match projection {
+                Projection::Perspective(perspective) => perspective.fov,
+                Projection::Orthographic(_) => std::f32::consts::FRAC_PI_4,
+            };
+            let viewport_height = camera
+                .logical_viewport_size()
+                .map_or(config.0.window.height as f32, |size| size.y.max(1.0));
+
+            (Some(transform.translation), fov, viewport_height)
+        },
+    );
 
     for (marker, mut transform) in &mut debris {
         let data = runtime.snapshot.horizon_debris[marker.index];
@@ -376,33 +402,35 @@ fn sync_world_visuals(
     } else {
         Quat::IDENTITY
     };
-    let planet_distance = camera_pos.map_or(750.0, |camera| camera.distance(planet_center));
-    let star_shell_radius = (planet_distance + STAR_BACKGROUND_PLANET_MARGIN)
-        .clamp(STAR_BACKGROUND_BASE_RADIUS, STAR_BACKGROUND_MAX_RADIUS);
-    let star_scale_factor = (star_shell_radius / STAR_BACKGROUND_BASE_RADIUS).clamp(1.0, 2.2);
-    let segment_thickness = border_thickness_for_distance(planet_distance);
-    let segment_len = border_len_for_distance(planet_distance);
+    let star_center = camera_pos.unwrap_or(Vec3::ZERO);
+    let seed_value = runtime.snapshot.seed.value();
 
     for (marker, mut transform) in &mut stars {
         let star = runtime.snapshot.stars[marker.index];
-        let camera = camera_pos.unwrap_or(Vec3::ZERO);
-        transform.translation = world_position_for_star_background(star, camera, star_shell_radius);
-        transform.scale = Vec3::splat(star_visual_scale(star) * star_scale_factor);
+        let radius =
+            star_background_radius(star, seed_value, marker.index, STAR_BACKGROUND_SHELL_RADIUS);
+        let world_units_per_pixel =
+            world_units_per_pixel_at_depth(radius, camera_fov_rad, viewport_height.max(1.0));
+        transform.translation = world_position_for_star_background(
+            star,
+            seed_value,
+            marker.index,
+            star_center,
+            STAR_BACKGROUND_SHELL_RADIUS,
+        );
+        transform.scale = Vec3::splat(star_visual_scale_world(star, world_units_per_pixel));
     }
 
     for mut transform in &mut planet_occluders {
         transform.translation = planet_center;
-        transform.scale = Vec3::splat(PLANET_RADIUS * PLANET_OCCLUDER_RADIUS_SCALE);
+        transform.rotation = planet_rotation;
+        transform.scale = Vec3::ONE;
     }
 
-    for (segment, mut transform) in &mut planet_segments {
-        *transform = planet_segment_transform(
-            segment.angle_rad,
-            planet_center,
-            planet_rotation,
-            segment_len,
-            segment_thickness,
-        );
+    for mut transform in &mut planet_borders {
+        transform.translation = planet_center + to_camera * 0.6;
+        transform.rotation = planet_rotation;
+        transform.scale = Vec3::ONE;
     }
 }
 
@@ -412,22 +440,14 @@ fn sync_world_visuals(
 )]
 fn world_position_for_star_background(
     star: StarPoint,
-    camera_world: Vec3,
+    seed_value: u64,
+    star_index: usize,
+    center_world: Vec3,
     shell_radius: f32,
 ) -> Vec3 {
-    let dir_raw = Vec3::new(
-        star.position.x as f32,
-        star.position.y as f32,
-        star.position.z as f32,
-    );
-    let direction = if dir_raw.length_squared() > f32::EPSILON {
-        dir_raw.normalize()
-    } else {
-        Vec3::Z
-    };
-    let layer = (1.0 - star.parallax as f32).clamp(0.0, 1.0);
-    let radius = shell_radius + layer * STAR_BACKGROUND_LAYER_RANGE;
-    camera_world + direction * radius
+    let direction = star_direction_from_seed_index(seed_value, star_index);
+    let radius = star_background_radius(star, seed_value, star_index, shell_radius);
+    center_world + direction * radius
 }
 
 fn world_position_for_debris(
@@ -566,8 +586,8 @@ fn wrap_axis_f32(value: f32, extent: f32) -> f32 {
 
 fn spawn_planet_border(
     commands: &mut Commands,
-    segment_mesh: Handle<Mesh>,
-    occluder_mesh: Handle<Mesh>,
+    fill_mesh: Handle<Mesh>,
+    ring_mesh: Handle<Mesh>,
     materials: &mut Assets<StandardMaterial>,
 ) {
     let ring_material = materials.add(StandardMaterial {
@@ -578,7 +598,6 @@ fn spawn_planet_border(
         ..Default::default()
     });
     let center = planet_center_for_travel(0.0);
-    let rotation = Quat::IDENTITY;
     let occluder_material = materials.add(StandardMaterial {
         emissive: LinearRgba::rgb(0.01, 0.01, 0.015),
         base_color: Color::srgb(0.01, 0.01, 0.015),
@@ -588,44 +607,34 @@ fn spawn_planet_border(
 
     commands.spawn((
         PbrBundle {
-            mesh: occluder_mesh,
+            mesh: fill_mesh,
             material: occluder_material,
             transform: Transform {
                 translation: center,
-                scale: Vec3::splat(PLANET_RADIUS * PLANET_OCCLUDER_RADIUS_SCALE),
                 ..Default::default()
             },
             ..Default::default()
         },
+        NoFrustumCulling,
         PlanetOccluder,
         Name::new("PlanetOccluder"),
     ));
 
-    for index in 0..PLANET_SEGMENTS {
-        let angle = (index as f32 / PLANET_SEGMENTS as f32) * std::f32::consts::TAU;
-        commands.spawn((
-            PbrBundle {
-                mesh: segment_mesh.clone(),
-                material: ring_material.clone(),
-                transform: planet_segment_transform(
-                    angle,
-                    center,
-                    rotation,
-                    PLANET_SEGMENT_LEN,
-                    PLANET_SEGMENT_THICKNESS,
-                ),
-                ..Default::default()
-            },
-            NoFrustumCulling,
-            PlanetBorderSegment { angle_rad: angle },
-            Name::new(format!("PlanetCircleSegment-{index}")),
-        ));
-    }
+    commands.spawn((
+        PbrBundle {
+            mesh: ring_mesh,
+            material: ring_material,
+            transform: Transform::from_translation(center),
+            ..Default::default()
+        },
+        NoFrustumCulling,
+        PlanetBorder,
+        Name::new("PlanetBorder"),
+    ));
 }
 
 fn spawn_headless_planet_border(commands: &mut Commands) {
     let center = planet_center_for_travel(0.0);
-    let rotation = Quat::IDENTITY;
 
     commands.spawn((
         SpatialBundle::from_transform(Transform::from_translation(center)),
@@ -633,50 +642,42 @@ fn spawn_headless_planet_border(commands: &mut Commands) {
         Name::new("HeadlessPlanetOccluder"),
     ));
 
-    for index in 0..PLANET_SEGMENTS {
-        let angle = (index as f32 / PLANET_SEGMENTS as f32) * std::f32::consts::TAU;
-        commands.spawn((
-            SpatialBundle::from_transform(planet_segment_transform(
-                angle,
-                center,
-                rotation,
-                PLANET_SEGMENT_LEN,
-                PLANET_SEGMENT_THICKNESS,
-            )),
-            PlanetBorderSegment { angle_rad: angle },
-            Name::new(format!("HeadlessPlanetCircleSegment-{index}")),
-        ));
-    }
+    commands.spawn((
+        SpatialBundle::from_transform(Transform::from_translation(center)),
+        PlanetBorder,
+        Name::new("HeadlessPlanetBorder"),
+    ));
 }
 
-fn planet_segment_transform(
-    angle_rad: f32,
-    center: Vec3,
-    rotation_basis: Quat,
-    segment_len: f32,
-    segment_thickness: f32,
-) -> Transform {
-    let radial_push = 0.45 + segment_thickness * 0.7;
-    let local_pos = Vec3::new(
-        (PLANET_RADIUS + radial_push) * angle_rad.cos(),
-        (PLANET_RADIUS + radial_push) * angle_rad.sin(),
-        0.0,
-    );
-    let local_tangent = Vec3::new(-angle_rad.sin(), angle_rad.cos(), 0.0).normalize();
-
-    let world_pos = center + rotation_basis * local_pos;
-    let world_tangent = (rotation_basis * local_tangent).normalize();
-    let rotation = Quat::from_rotation_arc(Vec3::X, world_tangent);
-
-    Transform {
-        translation: world_pos,
-        rotation,
-        scale: Vec3::new(segment_len, segment_thickness, segment_thickness),
-    }
+fn star_visual_scale_world(star: StarPoint, world_units_per_pixel: f32) -> f32 {
+    let pixel_size = (1.30 + star.brightness * 1.25).clamp(1.25, 2.65);
+    (world_units_per_pixel * pixel_size).max(0.1)
 }
 
-fn star_visual_scale(star: StarPoint) -> f32 {
-    (0.24 + star.brightness * 0.48).clamp(0.28, 0.72)
+fn star_initial_scale(star: StarPoint) -> f32 {
+    (1.30 + star.brightness * 1.25).clamp(1.25, 2.65)
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "Worldgen parallax range is normalized and intentionally projected to f32 for render math."
+)]
+fn star_background_radius(
+    star: StarPoint,
+    seed_value: u64,
+    star_index: usize,
+    shell_radius: f32,
+) -> f32 {
+    let layer = (1.0 - star.parallax as f32).clamp(0.0, 1.0);
+    let depth_hash =
+        seed_value.rotate_left(11) ^ (star_index as u64).wrapping_mul(0x94d0_49bb_1331_11eb);
+    let depth_jitter = hash_unit(depth_hash) - 0.5;
+    let jitter = depth_jitter * STAR_BACKGROUND_DEPTH_JITTER_RANGE;
+    shell_radius + layer * STAR_BACKGROUND_LAYER_RANGE + jitter
+}
+
+fn world_units_per_pixel_at_depth(depth: f32, fov_rad: f32, viewport_height: f32) -> f32 {
+    (2.0 * depth * (fov_rad * 0.5).tan()) / viewport_height.max(1.0)
 }
 
 fn debris_visual_scale(debris: HorizonDebris) -> Vec3 {
@@ -704,16 +705,6 @@ fn planet_center_static() -> Vec3 {
     Vec3::new(PLANET_BASE_X, PLANET_BASE_Y, PLANET_FLYBY_START_Z)
 }
 
-fn border_thickness_for_distance(distance: f32) -> f32 {
-    let near_boost = (180.0 / distance.max(65.0)).clamp(0.0, 1.2);
-    (PLANET_SEGMENT_THICKNESS + distance * 0.00014 + near_boost * 0.16).clamp(0.22, 0.56)
-}
-
-fn border_len_for_distance(distance: f32) -> f32 {
-    let near_boost = (180.0 / distance.max(65.0)).clamp(0.0, 1.2);
-    (PLANET_SEGMENT_LEN + distance * 0.00016 + near_boost * 0.24).clamp(1.4, 2.55)
-}
-
 fn cubic_bezier(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t: f32) -> Vec3 {
     let u = 1.0 - t;
     let tt = t * t;
@@ -721,6 +712,22 @@ fn cubic_bezier(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t: f32) -> Vec3 {
     let uuu = uu * u;
     let ttt = tt * t;
     p0 * uuu + p1 * (3.0 * uu * t) + p2 * (3.0 * u * tt) + p3 * ttt
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "Seeded sky direction generation intentionally maps hashes into f32 unit vectors."
+)]
+fn star_direction_from_seed_index(seed_value: u64, star_index: usize) -> Vec3 {
+    let idx = star_index as u64;
+    let hash_a = seed_value ^ idx.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    let hash_b = seed_value.rotate_left(19) ^ idx.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    let u = hash_unit(hash_a);
+    let v = hash_unit(hash_b);
+    let theta = u * std::f32::consts::TAU;
+    let z = v * 2.0 - 1.0;
+    let r = (1.0 - z * z).max(0.0).sqrt();
+    Vec3::new(r * theta.cos(), r * theta.sin(), z).normalize_or_zero()
 }
 
 #[allow(

@@ -33,8 +33,8 @@ impl Plugin for GamePlugin {
                 GameSet::Input,
                 GameSet::Gameplay,
                 GameSet::Music,
-                GameSet::World,
                 GameSet::Camera,
+                GameSet::World,
                 GameSet::Ui,
                 GameSet::Debug,
             )
@@ -48,8 +48,8 @@ impl Plugin for GamePlugin {
                 GameSet::Input,
                 GameSet::Gameplay,
                 GameSet::Music,
-                GameSet::World,
                 GameSet::Camera,
+                GameSet::World,
                 GameSet::Ui,
                 GameSet::Debug,
             )
