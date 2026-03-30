@@ -1,0 +1,28 @@
+[package]
+name = "spaceflights-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "spaceflights_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "spaceflights-app"
+path = "src/main.rs"
+
+[[bin]]
+name = "spaceflights-dev-debug"
+path = "src/dev_main.rs"
+
+[dependencies]
+bevy = { version = "0.14", default-features = true }
+rodio = "0.18"
+rusqlite = { version = "0.32", features = ["bundled"] }
+spaceflights-core = { path = "../core" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[lints]
+workspace = true

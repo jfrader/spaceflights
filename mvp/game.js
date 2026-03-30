@@ -91,6 +91,10 @@ function randomSeedString() {
     .slice(0, 8);
 }
 
+function clampCruiseSpeed(v) {
+  return clamp(v, 30, 4000);
+}
+
 const colors = {
   white: "#f4f4f4",
   red: "#ff5454",
@@ -103,6 +107,12 @@ const PHASE = {
   RETURN: "RETURN_TO_SHIP",
   SUCCESS: "MISSION_SUCCESS",
   FAIL: "MISSION_FAIL",
+};
+
+const SHIP_NAV = {
+  CRUISE: "CRUISE",
+  ORBIT: "ORBIT",
+  STANDBY: "STANDBY",
 };
 
 const state = {
@@ -118,6 +128,16 @@ const state = {
     yaw: 0,
     fuel: 100,
     heat: 0,
+    cruiseYaw: 0,
+    cruiseSpeed: 111120,
+    distanceTraveled: 0,
+    navState: SHIP_NAV.CRUISE,
+    systems: {
+      reactor: 62,
+      comms: 58,
+      thermal: 54,
+      propulsion: 66,
+    },
   },
 
   module: {
@@ -127,6 +147,7 @@ const state = {
     fuel: 100,
     heat: 0,
     damage: 0,
+    attached: true,
   },
 
   eva: {
@@ -160,27 +181,111 @@ const state = {
   world: {
     starsSky: [],
     starsDeep: [],
+    solarSystem: null,
     anchors: [],
     debris: [],
   },
 
   inputQueue: [],
+  mouseLook: {
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+    yawOffset: 0,
+    pitchOffset: 0,
+  },
 };
 
 const keys = new Set();
 window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
-  if (event.code === "Digit1") state.mode = "SHIP";
+  if (event.code === "Digit1") state.mode = "SHIP_INT";
   if (event.code === "Digit2") state.mode = "MODULE";
-  if (event.code === "Digit3") {
-    state.mode = "EVA";
-    state.eva.deployed = true;
+  if (event.code === "Digit3") state.mode = "EVA";
+  if (event.code === "Digit4") state.mode = "SHIP";
+  if (event.code === "BracketRight" || event.code === "Equal" || event.code === "NumpadAdd") {
+    state.ship.cruiseSpeed = clampCruiseSpeed(state.ship.cruiseSpeed + 120);
+    state.message = `Ship cruise setpoint: ${state.ship.cruiseSpeed.toFixed(0)} u/s`;
+  }
+  if (event.code === "BracketLeft" || event.code === "Minus" || event.code === "NumpadSubtract") {
+    state.ship.cruiseSpeed = clampCruiseSpeed(state.ship.cruiseSpeed - 120);
+    state.message = `Ship cruise setpoint: ${state.ship.cruiseSpeed.toFixed(0)} u/s`;
+  }
+  if (event.code === "KeyM") {
+    const order = [SHIP_NAV.CRUISE, SHIP_NAV.ORBIT, SHIP_NAV.STANDBY];
+    const next = (order.indexOf(state.ship.navState) + 1) % order.length;
+    state.ship.navState = order[next];
+  }
+  if (event.code === "KeyX") {
+    if (state.module.attached) {
+      if (state.ship.navState !== SHIP_NAV.CRUISE) {
+        state.module.attached = false;
+        state.message = "Explorer detached.";
+      } else {
+        state.message = "Cannot detach while ship is cruising. Set ORBIT/STANDBY first.";
+      }
+    } else {
+      const near = len(sub(state.module.pos, state.ship.pos)) < 95;
+      const rel = len(sub(state.module.vel, state.ship.vel)) < 24;
+      if (near && rel) {
+        state.module.attached = true;
+        state.module.vel = { ...state.ship.vel };
+        state.module.yaw = state.ship.yaw;
+        state.message = "Explorer reattached.";
+      } else {
+        state.message = "Move explorer near ship and match velocity to reattach.";
+      }
+    }
+  }
+  if (event.code === "KeyC") {
+    if (!state.eva.deployed) {
+      state.eva.deployed = true;
+      const evaOffset = rotateY(vec3(0, 0, 12), state.module.yaw);
+      state.eva.pos = add(state.module.pos, evaOffset);
+      state.eva.vel = { ...state.module.vel };
+      state.eva.yaw = state.module.yaw;
+      state.message = "Astronaut detached (tether active).";
+    } else {
+      const near = len(sub(state.eva.pos, state.module.pos)) < 35;
+      const rel = len(sub(state.eva.vel, state.module.vel)) < 22;
+      if (near && rel) {
+        state.eva.deployed = false;
+        state.eva.pos = add(state.module.pos, vec3(0, 0, 12));
+        state.eva.vel = { ...state.module.vel };
+        state.eva.yaw = state.module.yaw;
+        state.message = "Astronaut recovered.";
+      } else {
+        state.message = "Move astronaut near module and match velocity to recover.";
+      }
+    }
   }
   if (event.code === "KeyR") resetRun();
   if (event.code === "KeyT") initWorld(randomSeedString());
   keys.add(event.code);
 });
 window.addEventListener("keyup", (event) => keys.delete(event.code));
+window.addEventListener("mousedown", (event) => {
+  if (event.button !== 0) return;
+  state.mouseLook.dragging = true;
+  state.mouseLook.lastX = event.clientX;
+  state.mouseLook.lastY = event.clientY;
+});
+window.addEventListener("mouseup", (event) => {
+  if (event.button !== 0) return;
+  state.mouseLook.dragging = false;
+});
+window.addEventListener("mousemove", (event) => {
+  if (!state.mouseLook.dragging) return;
+  const dx = event.clientX - state.mouseLook.lastX;
+  const dy = event.clientY - state.mouseLook.lastY;
+  state.mouseLook.lastX = event.clientX;
+  state.mouseLook.lastY = event.clientY;
+  state.mouseLook.yawOffset = (state.mouseLook.yawOffset - dx * 0.0055) % TAU;
+  state.mouseLook.pitchOffset = clamp(state.mouseLook.pitchOffset - dy * 0.0035, -0.75, 0.75);
+});
+window.addEventListener("blur", () => {
+  state.mouseLook.dragging = false;
+});
 
 function getInputVec() {
   return vec3(
@@ -211,16 +316,30 @@ function initWorld(seedString) {
   state.ship.yaw = 0;
   state.ship.fuel = 100;
   state.ship.heat = 0;
+  state.ship.cruiseYaw = rng() * TAU;
+  state.ship.cruiseSpeed = 100 + rng() * 40;
+  state.ship.distanceTraveled = 0;
+  state.ship.navState = SHIP_NAV.CRUISE;
+  state.ship.systems = {
+    reactor: 58 + rng() * 20,
+    comms: 52 + rng() * 18,
+    thermal: 50 + rng() * 16,
+    propulsion: 60 + rng() * 22,
+  };
+  const cruiseForward = rotateY(vec3(0, 0, -1), state.ship.cruiseYaw);
+  state.ship.vel = mul(cruiseForward, state.ship.cruiseSpeed);
+  state.ship.yaw = state.ship.cruiseYaw;
 
   state.module.pos = vec3((rng() - 0.5) * 60, (rng() - 0.5) * 30, 120 + rng() * 40);
-  state.module.vel = vec3();
+  state.module.vel = { ...state.ship.vel };
   state.module.yaw = Math.PI + (rng() - 0.5) * 0.25;
   state.module.fuel = 100;
   state.module.heat = 0;
   state.module.damage = 0;
+  state.module.attached = true;
 
   state.eva.pos = add(state.module.pos, vec3(0, 0, 12));
-  state.eva.vel = vec3();
+  state.eva.vel = { ...state.ship.vel };
   state.eva.yaw = state.module.yaw;
   state.eva.oxygen = 100;
   state.eva.deployed = false;
@@ -268,6 +387,30 @@ function initWorld(seedString) {
       pos: vec3((rng() - 0.5) * 7600, (rng() - 0.5) * 5300, (rng() - 0.5) * 7600),
     })),
   ];
+
+  const solarForward = rotateY(vec3(0, 0, -1), state.ship.cruiseYaw);
+  const cruiseRight = rotateY(vec3(1, 0, 0), state.ship.cruiseYaw);
+  const solarForwardDist = 12000 + rng() * 7000;
+  const solarSideOffset = (rng() - 0.5) * 4800;
+  const solarCenter = add(
+    state.ship.pos,
+    add(
+      mul(solarForward, solarForwardDist),
+      vec3(cruiseRight.x * solarSideOffset, -60 + (rng() - 0.5) * 180, cruiseRight.z * solarSideOffset)
+    )
+  );
+  const planetCount = 3 + Math.floor(rng() * 2);
+  state.world.solarSystem = {
+    center: solarCenter,
+    starRadius: 1800 + rng() * 1000,
+    planets: Array.from({ length: planetCount }, (_, i) => ({
+      orbitRadius: 5200 + i * (3600 + rng() * 900),
+      size: 700 + rng() * 550,
+      angularSpeed: 0.0016 + rng() * 0.003,
+      phase: rng() * TAU,
+      tilt: (rng() - 0.5) * 0.55,
+    })),
+  };
 
   state.world.anchors = Array.from({ length: 4 }, (_, i) => {
     const dist = 1500 + rng() * 2200;
@@ -338,6 +481,50 @@ function updateMission() {
   }
 }
 
+function updateShipCruise(dt) {
+  const reactorFactor = clamp(state.ship.systems.reactor / 100, 0.45, 1.3);
+  const propFactor = clamp(state.ship.systems.propulsion / 100, 0.45, 1.3);
+  let targetVel = vec3(0, 0, 0);
+
+  if (state.ship.navState === SHIP_NAV.CRUISE) {
+    const forward = rotateY(vec3(0, 0, -1), state.ship.cruiseYaw);
+    const cruiseTarget = state.ship.cruiseSpeed * reactorFactor * propFactor;
+    targetVel = mul(forward, cruiseTarget);
+    state.ship.yaw = state.ship.cruiseYaw;
+  } else if (state.ship.navState === SHIP_NAV.ORBIT) {
+    state.ship.yaw += dt * 0.26;
+    const forward = rotateY(vec3(0, 0, -1), state.ship.yaw);
+    const orbitSpeed = state.ship.cruiseSpeed * 0.44 * reactorFactor;
+    targetVel = mul(forward, orbitSpeed);
+  } else {
+    targetVel = vec3(0, 0, 0);
+  }
+
+  state.ship.vel = vec3(
+    lerp(state.ship.vel.x, targetVel.x, 0.35 * dt),
+    lerp(state.ship.vel.y, targetVel.y, 0.2 * dt),
+    lerp(state.ship.vel.z, targetVel.z, 0.35 * dt)
+  );
+  state.ship.distanceTraveled += len(state.ship.vel) * dt;
+}
+
+function updateShipInternalSystems(dt) {
+  const rate = 20 * dt;
+  if (keys.has("KeyU")) state.ship.systems.reactor = clamp(state.ship.systems.reactor + rate, 0, 100);
+  if (keys.has("KeyJ")) state.ship.systems.reactor = clamp(state.ship.systems.reactor - rate, 0, 100);
+  if (keys.has("KeyI")) state.ship.systems.comms = clamp(state.ship.systems.comms + rate, 0, 100);
+  if (keys.has("KeyK")) state.ship.systems.comms = clamp(state.ship.systems.comms - rate, 0, 100);
+  if (keys.has("KeyO")) state.ship.systems.thermal = clamp(state.ship.systems.thermal + rate, 0, 100);
+  if (keys.has("KeyL")) state.ship.systems.thermal = clamp(state.ship.systems.thermal - rate, 0, 100);
+  // Propulsion follows reactor/thermal balance so internal management impacts cruise quality.
+  const thermalPenalty = clamp((state.ship.systems.thermal - 75) / 25, 0, 1) * 18;
+  state.ship.systems.propulsion = clamp(
+    lerp(state.ship.systems.propulsion, (state.ship.systems.reactor * 0.7 + state.ship.systems.comms * 0.3) - thermalPenalty, 0.08),
+    0,
+    100
+  );
+}
+
 function applyGuidedControl(entity, dt, config) {
   const rawInput = getInputVec();
   const input = getLaggedInput(rawInput, config.lagFrames || 0);
@@ -386,13 +573,23 @@ function updateWorldPhysics(dt) {
     state.module.vel = add(state.module.vel, mul(jitter, state.signal.outside * 14 * dt));
   }
 
-  state.module.pos = add(state.module.pos, mul(state.module.vel, dt));
   state.ship.pos = add(state.ship.pos, mul(state.ship.vel, dt));
+  if (!state.module.attached) {
+    state.module.pos = add(state.module.pos, mul(state.module.vel, dt));
+  }
   state.eva.pos = add(state.eva.pos, mul(state.eva.vel, dt));
 
+  if (state.module.attached) {
+    const dockOffset = rotateY(vec3(0, 0, 90), state.ship.yaw);
+    state.module.pos = add(state.ship.pos, dockOffset);
+    state.module.vel = { ...state.ship.vel };
+    state.module.yaw = state.ship.yaw;
+  }
+
   if (!state.eva.deployed) {
-    state.eva.pos = add(state.module.pos, vec3(0, 0, 12));
-    state.eva.vel = mul(state.module.vel, 0.5);
+    const evaOffset = rotateY(vec3(0, 0, 12), state.module.yaw);
+    state.eva.pos = add(state.module.pos, evaOffset);
+    state.eva.vel = { ...state.module.vel };
     state.eva.yaw = state.module.yaw;
   } else {
     const tether = sub(state.eva.pos, state.module.pos);
@@ -417,10 +614,14 @@ function updateWorldPhysics(dt) {
 
 function update(dt) {
   state.time += dt;
+  updateShipCruise(dt);
+  if (state.mode === "SHIP_INT" || state.mode === "SHIP") {
+    updateShipInternalSystems(dt);
+  }
 
   if (state.phase !== PHASE.SUCCESS && state.phase !== PHASE.FAIL) {
     updateSignal();
-    if (state.mode === "MODULE") {
+    if (state.mode === "MODULE" && !state.module.attached) {
       applyGuidedControl(state.module, dt, {
         turnRate: 2.2,
         boostMult: 1.85,
@@ -437,31 +638,15 @@ function update(dt) {
         resourceObj: state.module,
         resourceKey: "fuel",
       });
-    } else if (state.mode === "SHIP") {
-      applyGuidedControl(state.ship, dt, {
-        turnRate: 1.6,
-        boostMult: 1.4,
-        baseAccel: 120,
-        drag: 0.8,
-        assist: 1.8,
-        maxSpeed: 170,
-        maxSpeedBoost: 220,
-        drain: 2.2,
-        drainBoost: 3.6,
-        lowResourceThreshold: 20,
-        lowResourceMin: 0.5,
-        lagFrames: 0,
-        resourceObj: state.ship,
-        resourceKey: "fuel",
-      });
-    } else {
-      state.eva.deployed = true;
+    } else if (state.mode === "MODULE" && state.module.attached) {
+      state.module.vel = { ...state.ship.vel };
+    } else if (state.mode === "EVA" && state.eva.deployed) {
       applyGuidedControl(state.eva, dt, {
         turnRate: 1.8,
         boostMult: 1.3,
         baseAccel: 90,
-        drag: 1.1,
-        assist: 2.8,
+        drag: 0.05,
+        assist: 0.12,
         maxSpeed: 130,
         maxSpeedBoost: 170,
         drain: 2.5,
@@ -482,6 +667,14 @@ function update(dt) {
       state.message = "Signal degrading: delay and drift increasing.";
     } else if (state.signal.edge > 0.18 && state.phase !== PHASE.RETURN) {
       state.message = "Signal edge: unstable.";
+    } else if (state.mode === "MODULE" && state.module.attached) {
+      state.message = "Explorer attached. Set ship to ORBIT/STANDBY, then press X to detach.";
+    } else if (state.mode === "EVA" && !state.eva.deployed) {
+      state.message = "Astronaut is inside module. Press C to detach (tethered).";
+    } else if (state.mode === "SHIP_INT") {
+      state.message = `Ship cruising at ${len(state.ship.vel).toFixed(0)} u/s. Balance reactor/comms/thermal.`;
+    } else if (state.mode === "SHIP") {
+      state.message = `External ship view. Cruise ${len(state.ship.vel).toFixed(0)} u/s.`;
     }
   } else {
     state.module.vel = mul(state.module.vel, Math.exp(-1.2 * dt));
@@ -651,6 +844,86 @@ function drawAnchors(camera) {
   }
 }
 
+function drawSolarSystem(camera) {
+  const solar = state.world.solarSystem;
+  if (!solar) return;
+
+  const starPos = solar.center;
+  const starRadius = solar.starRadius;
+  // Sun rendered as a sphere silhouette (solid black fill + bright rim).
+  const sun2 = project(starPos, camera);
+  const sunEdge2 = project(add(starPos, vec3(starRadius, 0, 0)), camera);
+  if (sun2 && sunEdge2) {
+    const sunR = Math.max(3, Math.hypot(sunEdge2.x - sun2.x, sunEdge2.y - sun2.y));
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(sun2.x, sun2.y, sunR, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = rgba(colors.white, 0.98);
+    ctx.lineWidth = 1.6 + clamp(4 / (sun2.z * 0.011 + 1), 0.4, 2.4);
+    ctx.beginPath();
+    ctx.arc(sun2.x, sun2.y, sunR, 0, TAU);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < solar.planets.length; i++) {
+    const p = solar.planets[i];
+    const orbitSeg = 44;
+    for (let j = 0; j < orbitSeg; j++) {
+      const a0 = (j / orbitSeg) * TAU;
+      const a1 = ((j + 1) / orbitSeg) * TAU;
+      const oy0 = Math.sin(a0) * p.orbitRadius * Math.sin(p.tilt);
+      const oy1 = Math.sin(a1) * p.orbitRadius * Math.sin(p.tilt);
+      drawLine3D(
+        add(starPos, vec3(Math.cos(a0) * p.orbitRadius, oy0, Math.sin(a0) * p.orbitRadius)),
+        add(starPos, vec3(Math.cos(a1) * p.orbitRadius, oy1, Math.sin(a1) * p.orbitRadius)),
+        camera,
+        colors.white,
+        0.2,
+        0.45
+      );
+    }
+
+    const t = state.time * p.angularSpeed + p.phase;
+    const planetPos = add(
+      starPos,
+      vec3(
+        Math.cos(t) * p.orbitRadius,
+        Math.sin(t) * p.orbitRadius * Math.sin(p.tilt),
+        Math.sin(t) * p.orbitRadius
+      )
+    );
+
+    const planetColor = i % 2 === 0 ? colors.blue : colors.green;
+    const center2 = project(planetPos, camera);
+    const edge2 = project(add(planetPos, vec3(p.size, 0, 0)), camera);
+    if (!center2 || !edge2) continue;
+
+    const radius2 = Math.max(2, Math.hypot(edge2.x - center2.x, edge2.y - center2.y));
+
+    // Opaque black disk so the sphere reads solid (not transparent wireframe).
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(center2.x, center2.y, radius2, 0, TAU);
+    ctx.fill();
+
+    // Single outline circle per planet.
+    ctx.strokeStyle = rgba(planetColor, 0.95);
+    ctx.lineWidth = 1.2 + clamp(4 / (center2.z * 0.011 + 1), 0.3, 1.8);
+    ctx.beginPath();
+    ctx.arc(center2.x, center2.y, radius2, 0, TAU);
+    ctx.stroke();
+  }
+
+  const star2 = project(starPos, camera);
+  if (star2) {
+    ctx.fillStyle = rgba(colors.white, 0.98);
+    ctx.font = `${11 * devicePixelRatio}px "IBM Plex Mono", monospace`;
+    ctx.fillText("SUN", star2.x + 14, star2.y - 12);
+  }
+}
+
 function drawDebris(camera) {
   for (const d of state.world.debris) {
     const tri = [add(d, vec3(-13, -9, 0)), add(d, vec3(13, -9, 0)), add(d, vec3(0, 12, 0))];
@@ -666,7 +939,7 @@ function drawShip(camera) {
     vec3(0, 0.85, 0.48), vec3(0, -0.9, 0.35), vec3(1.55, 0, 0.95), vec3(-1.55, 0, 0.95),
   ];
   const edges = [[0,1],[0,2],[1,3],[2,3],[1,4],[2,4],[1,6],[2,7],[6,3],[7,3],[5,3],[5,0]];
-  drawObject(state.ship.pos, 0, 36, verts, edges, colors.white, camera, { alpha: 0.95, baseWidth: 1 });
+  drawObject(state.ship.pos, state.ship.yaw, 36, verts, edges, colors.white, camera, { alpha: 0.95, baseWidth: 1 });
 }
 
 function drawModule(camera) {
@@ -723,7 +996,7 @@ function drawModule(camera) {
 }
 
 function drawEVA(camera) {
-  if (!state.eva.deployed && state.mode !== "EVA") return;
+  if (!state.eva.deployed) return;
   const verts = [vec3(0, 0, 0), vec3(0, 1, 0), vec3(-0.6, 0, 0), vec3(0.6, 0, 0), vec3(0, -0.85, 0)];
   const edges = [[0,1],[0,2],[0,3],[0,4],[2,4],[3,4]];
   const color = state.eva.oxygen < 28 ? colors.red : colors.green;
@@ -751,8 +1024,8 @@ function drawObjective(camera) {
 }
 
 function activeEntity() {
-  if (state.mode === "SHIP") return state.ship;
-  if (state.mode === "EVA") return state.eva;
+  if (state.mode === "SHIP" || state.mode === "SHIP_INT") return state.ship;
+  if (state.mode === "EVA") return state.eva.deployed ? state.eva : state.module;
   return state.module;
 }
 
@@ -760,10 +1033,65 @@ function cameraRigForMode(mode) {
   if (mode === "SHIP") {
     return { back: 380, side: 48, height: 180, fovScale: 0.76, posLerp: 0.18 };
   }
-  if (mode === "EVA") {
+  if (mode === "SHIP_INT") {
+    return { back: 70, side: 10, height: 24, fovScale: 0.98, posLerp: 0.22 };
+  }
+  if (mode === "EVA" && state.eva.deployed) {
     return { back: 200, side: 24, height: 105, fovScale: 0.9, posLerp: 0.2 };
   }
   return { back: 300, side: 36, height: 130, fovScale: 0.82, posLerp: 0.2 };
+}
+
+function drawShipInteriorOverlay() {
+  if (state.mode !== "SHIP_INT") return;
+  const w = canvas.width;
+  const h = canvas.height;
+  const panelW = Math.min(w * 0.45, 430);
+  const panelH = Math.min(h * 0.52, 360);
+  const x = w - panelW - 22;
+  const y = h - panelH - 22;
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+  ctx.fillRect(x, y, panelW, panelH);
+  ctx.strokeStyle = rgba(colors.white, 0.35);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, panelW, panelH);
+
+  const nodes = [
+    { k: "reactor", label: "REACTOR", px: x + panelW * 0.22, py: y + panelH * 0.26 },
+    { k: "comms", label: "COMMS", px: x + panelW * 0.74, py: y + panelH * 0.24 },
+    { k: "thermal", label: "THERMAL", px: x + panelW * 0.24, py: y + panelH * 0.74 },
+    { k: "propulsion", label: "PROPULSION", px: x + panelW * 0.74, py: y + panelH * 0.72 },
+  ];
+
+  ctx.font = `${11 * devicePixelRatio}px "IBM Plex Mono", monospace`;
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    const b = nodes[(i + 1) % nodes.length];
+    const av = state.ship.systems[a.k] / 100;
+    ctx.strokeStyle = rgba(colors.green, 0.22 + av * 0.65);
+    ctx.lineWidth = 1.2 + av * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(a.px, a.py);
+    ctx.lineTo(b.px, b.py);
+    ctx.stroke();
+  }
+
+  for (const n of nodes) {
+    const v = state.ship.systems[n.k];
+    const danger = n.k === "thermal" && v > 75;
+    const c = danger ? colors.red : colors.white;
+    ctx.strokeStyle = rgba(c, 0.9);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(n.px, n.py, 16, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = rgba(c, 0.9);
+    ctx.fillText(`${n.label} ${v.toFixed(0)}%`, n.px + 20, n.py + 4);
+  }
+
+  ctx.fillStyle = rgba(colors.blue, 0.9);
+  ctx.fillText(`SHIP INTERNAL (${state.ship.navState}) // U/J reactor  I/K comms  O/L thermal  [ / ] cruise speed  M nav mode  X detach/dock`, x + 14, y + panelH - 16);
 }
 
 function drawTrajectory(camera) {
@@ -806,11 +1134,13 @@ function drawObjectiveLabel(camera) {
 function render() {
   const actor = activeEntity();
   const rig = cameraRigForMode(state.mode);
-  const forward = rotateY(vec3(0, 0, -1), actor.yaw);
-  const right = rotateY(vec3(1, 0, 0), actor.yaw);
+  const camYaw = actor.yaw + state.mouseLook.yawOffset;
+  const forward = rotateY(vec3(0, 0, -1), camYaw);
+  const right = rotateY(vec3(1, 0, 0), camYaw);
+  const camHeight = rig.height + state.mouseLook.pitchOffset * 180;
   const desiredPos = add(
     actor.pos,
-    add(add(mul(forward, -rig.back), mul(right, rig.side)), vec3(0, rig.height, 0))
+    add(add(mul(forward, -rig.back), mul(right, rig.side)), vec3(0, camHeight, 0))
   );
   state.camera.pos = vec3(
     lerp(state.camera.pos.x, desiredPos.x, rig.posLerp),
@@ -839,6 +1169,7 @@ function render() {
 
   drawStarfield(camera);
   drawGrid(camera);
+  drawSolarSystem(camera);
   drawAnchors(camera);
   drawSignalSphere(camera);
   drawDebris(camera);
@@ -848,6 +1179,7 @@ function render() {
   drawEVA(camera);
   drawTether(camera);
   if (state.mode === "MODULE") drawTrajectory(camera);
+  drawShipInteriorOverlay();
 
   drawObjectiveLabel(camera);
   drawReticle();
@@ -861,10 +1193,11 @@ function phaseLabel(phase) {
 }
 
 function updateHud() {
+  const cruisePct = ((state.ship.cruiseSpeed - 30) / (4000 - 30)) * 100;
   hud.phase.textContent = `PHASE   ${phaseLabel(state.phase)}  |  Seed ${state.seed}`;
-  hud.mode.textContent = `MODE    ${state.mode} (3rd person)  |  Signal lag ${state.signal.lagFrames}f`;
-  hud.resources.textContent = `SHIP FUEL [${meter(state.ship.fuel)}] ${state.ship.fuel.toFixed(0)}\nMODULE   [${meter(state.module.fuel)}] ${state.module.fuel.toFixed(0)}\nEVA O2   [${meter(state.eva.oxygen)}] ${state.eva.oxygen.toFixed(0)}\nSIGNAL   [${meter(state.signal.quality * 100)}] ${(state.signal.quality * 100).toFixed(0)}%\nDAMAGE   [${meter(100 - state.module.damage)}] ${state.module.damage.toFixed(0)}%`;
-  hud.status.textContent = `STATUS  ${state.message}`;
+  hud.mode.textContent = `MODE    ${state.mode} (3rd person)  |  Ship ${state.ship.navState}  |  Signal lag ${state.signal.lagFrames}f  |  Cruise ${len(state.ship.vel).toFixed(0)} u/s (set ${state.ship.cruiseSpeed.toFixed(0)})`;
+  hud.resources.textContent = `CRUISE   [${meter(cruisePct)}] set ${state.ship.cruiseSpeed.toFixed(0)} / actual ${len(state.ship.vel).toFixed(0)}\nSHIP FUEL [${meter(state.ship.fuel)}] ${state.ship.fuel.toFixed(0)}\nMODULE   [${meter(state.module.fuel)}] ${state.module.fuel.toFixed(0)}\nEVA O2   [${meter(state.eva.oxygen)}] ${state.eva.oxygen.toFixed(0)}\nSIGNAL   [${meter(state.signal.quality * 100)}] ${(state.signal.quality * 100).toFixed(0)}%\nDAMAGE   [${meter(100 - state.module.damage)}] ${state.module.damage.toFixed(0)}%`;
+  hud.status.textContent = `STATUS  ${state.message} | Explorer ${state.module.attached ? "ATTACHED" : "DETACHED"} | Ship traveled ${state.ship.distanceTraveled.toFixed(0)} u`;
 }
 
 function resize() {

@@ -166,6 +166,24 @@ Features:
 * Sparse but readable
 * Geometric clarity
 
+### 7.1 Real-Scale Feeling
+
+The universe must feel physically large, not toy-sized.
+
+Requirements:
+
+* Celestial bodies (star/planets/moons) should read as massive bodies
+* Bodies should usually start far from the player ship
+* Travel should communicate long-distance movement over time
+* Relative velocity inheritance must be preserved when detaching module/EVA from moving ship
+* Scale must be felt through motion/parallax, not just UI numbers
+
+Practical interpretation for implementation:
+
+* Keep world distances large enough that approach takes sustained travel
+* Keep nearby gameplay still navigable (do not make mission targets unreachable)
+* Preserve orientation cues while traveling at high cruise speeds
+
 ---
 
 ## 8. VISUAL & RENDERING SYSTEM (CRITICAL)
@@ -321,6 +339,7 @@ States:
 
 * Stars: points
 * Debris: triangles
+* Planets/moons (distant anchors): circumference-only wireframe silhouette (outline ring), no filled disk/body
 * Module: simple
 * Ship: medium
 * Station: complex
@@ -443,6 +462,7 @@ Constraints:
 * Space is sparse but never empty
 * Points of interest are always within navigable distance
 * Visual anchors are always present
+* Celestial anchors should support real-scale perception (large + distant, but still readable)
 
 ---
 
