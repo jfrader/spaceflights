@@ -1,0 +1,97 @@
+name: release-builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: build-${{ matrix.platform.id }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - id: linux-x64
+            os: ubuntu-latest
+            exe_ext: ""
+          - id: macos-arm64
+            os: macos-latest
+            exe_ext: ""
+          - id: windows-x64
+            os: windows-latest
+            exe_ext: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        shell: bash
+        run: |
+          cargo build --release -p spaceflights-app --bin spaceflights-app
+          cargo build --release -p spaceflights-app --bin spaceflights-dev-debug
+
+      - name: Prepare artifact bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/release/spaceflights-app${{ matrix.platform.exe_ext }}" dist/
+          cp "target/release/spaceflights-dev-debug${{ matrix.platform.exe_ext }}" dist/
+          cp README.md dist/README.md
+          cat > dist/QUICKSTART.txt << 'EOF'
+          SPACEFLIGHTS quickstart
+
+          Main build:
+            ./spaceflights-app
+          Dev debug build:
+            ./spaceflights-dev-debug
+
+          On Windows:
+            .\spaceflights-app.exe
+            .\spaceflights-dev-debug.exe
+
+          Optional env vars:
+            SPACEFLIGHTS_MUSIC_ENABLED=true|false
+            SPACEFLIGHTS_MUSIC_BACKEND=silent|debug|rodio
+          EOF
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spaceflights-${{ matrix.platform.id }}
+          path: dist/*
+          retention-days: 14
+
+  publish:
+    name: publish-github-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: spaceflights-*
+
+      - name: Archive artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dir in artifacts/spaceflights-*; do
+            base="$(basename "$dir")"
+            (cd artifacts && zip -r "../${base}.zip" "$base")
+          done
+          ls -lh ./*.zip
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            spaceflights-*.zip

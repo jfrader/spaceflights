@@ -15,6 +15,7 @@ All significant changes must be recorded here.
 - `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`
 
 ## Unreleased
+- `ci(release): add cross-platform release workflow (linux/macos/windows) with build artifacts and tag-based GitHub Release assets`
 - `fix(world): replace thin star shell with radial volume distribution to remove universe-edge ring artifacts`
 - `docs(architecture): align schedule docs with camera-before-world ordering and active gameplay phase`
 - `fix(world): prevent starfield shell-outside artifact at high mission distance and randomize star depth to remove universe-edge ring`

@@ -20,6 +20,19 @@ Foundation-first Rust + Bevy codebase for SPACEFLIGHTS.
 - `make check`
 - `make test`
 
+## Release Builds (GitHub Actions)
+- Workflow: `.github/workflows/release.yml`
+- Triggers:
+  - Manual: Actions -> `release-builds` -> `Run workflow`
+  - Tag push: `git tag v0.1.0 && git push origin v0.1.0`
+- Output:
+  - Per-platform artifacts (`linux-x64`, `macos-arm64`, `windows-x64`) containing:
+    - `spaceflights-app`
+    - `spaceflights-dev-debug`
+    - `README.md`
+    - `QUICKSTART.txt`
+  - On `v*` tags, zipped artifacts are also attached to a GitHub Release.
+
 Override music backend per run:
 - `make run MUSIC_BACKEND=silent`
 - `make run-dev MUSIC_BACKEND=debug`
