@@ -1,1 +1,0 @@
-{"nodes": [{"id": "pkg_spaceflights_core", "label": "spaceflights-core", "file_type": "code", "type": "package", "ecosystem": "cargo", "source_file": "core/Cargo.toml", "source_location": "L1"}], "edges": []}
