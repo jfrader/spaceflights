@@ -1,5 +1,8 @@
 # SPACEFLIGHTS
 
+[![ci](https://img.shields.io/github/actions/workflow/status/jfrader/spaceflights/ci.yml?branch=master&style=flat&label=ci)](https://github.com/jfrader/spaceflights/actions)
+[![last commit](https://img.shields.io/github/last-commit/jfrader/spaceflights?style=flat)](https://github.com/jfrader/spaceflights/commits)
+
 Foundation-first Rust + Bevy codebase for SPACEFLIGHTS.
 
 ## Current Slice (Agent Checklist)

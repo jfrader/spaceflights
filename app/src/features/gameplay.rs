@@ -25,7 +25,7 @@ impl GameplayCommandQueue {
     }
 
     fn drain(&mut self) -> Vec<GameCommand> {
-        self.commands.drain(..).collect()
+        std::mem::take(&mut self.commands)
     }
 
     #[must_use]
