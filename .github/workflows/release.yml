@@ -25,7 +25,7 @@ jobs:
             exe_ext: ".exe"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux audio dependencies
         if: runner.os == 'Linux'
@@ -64,7 +64,7 @@ jobs:
           EOF
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: spaceflights-${{ matrix.platform.id }}
           path: dist/*
@@ -80,7 +80,7 @@ jobs:
 
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
           pattern: spaceflights-*
@@ -96,7 +96,7 @@ jobs:
           ls -lh ./*.zip
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             spaceflights-*.zip
